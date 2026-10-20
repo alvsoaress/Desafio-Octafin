@@ -47,13 +47,13 @@ npm run dev
 
 O `npm run dev` sobe a API, os bancos simulados e o front com recarga automática. Abra http://localhost:5173.
 
-Cada pacote tem um `.env.example` com as variáveis e seus valores padrão, que já funcionam localmente. Para mudar algum, copie o arquivo para `.env` no mesmo pacote:
+Cada pacote tem um `.env.example` com as variáveis e seus valores padrão, que já funcionam localmente. Por enquanto, só os bancos simulados leem o `.env`; a API e o front passam a lê-lo quando ganharem configuração própria. Para mudar alguma variável dos bancos simulados, copie o arquivo para `.env` no mesmo pacote:
 
 ```bash
-cp api/.env.example api/.env
 cp bank-mocks/.env.example bank-mocks/.env
-cp web/.env.example web/.env
 ```
+
+Uma variável passada na linha de comando tem precedência sobre o `.env`.
 
 ### Scripts
 
@@ -70,3 +70,64 @@ Rode na raiz do projeto.
 | `npm run check` | Lint, tipos, testes e build, nessa ordem, parando no primeiro erro. |
 
 Para rodar um script em um pacote só, use `-w`, por exemplo `npm test -w @consignado/api`.
+
+## Bancos simulados
+
+O pacote `bank-mocks` simula dois bancos parceiros num único processo, cada um na sua porta e com um contrato diferente, como acontece com APIs de bancos reais. Os bancos validam o corpo recebido e respondem HTTP 400 quando ele vem fora do contrato. Nenhum deles guarda nem registra o CPF: o log de cada requisição traz só banco, método, caminho, status e duração.
+
+| | Banco Alpha | Banco Beta |
+| --- | --- | --- |
+| Porta | `4001` | `4002` |
+| Rota | `POST /v1/loan-quotes` | `POST /api/simulacao` |
+| Corpo | `{ "document": "<cpf>", "amountCents": 1000000, "termMonths": 24 }` | `{ "cpf": "<cpf>", "valor": "10000.00", "prazoMeses": 24 }` |
+| Resposta | `{ "quoteId": "…", "annualInterestRate": "0.24" }` (taxa anual em decimal) | `{ "codigo": "…", "taxaAnualPercentual": "21.50" }` (taxa anual em percentual) |
+
+O Alpha responde em cerca de 100 ms, com taxa fixa por faixa de prazo:
+
+| Prazo | Taxa anual |
+| --- | --- |
+| 6 a 24 meses | 24% (`"0.24"`) |
+| 25 a 60 meses | 26% (`"0.26"`) |
+| 61 a 96 meses | 28% (`"0.28"`) |
+
+O Beta se comporta conforme a variável `BETA_SCENARIO`, sempre do mesmo jeito enquanto o processo estiver no ar:
+
+| Cenário | Comportamento | Status esperado na API |
+| --- | --- | --- |
+| `ok` | Responde em cerca de 150 ms com taxa de 21,50% a.a. | `success` |
+| `slow` (padrão) | Responde a mesma oferta depois de 10 s, acima do tempo limite da API. | `timeout` |
+| `unavailable` | Responde HTTP 503 a qualquer requisição. | `unavailable` |
+| `invalid` | Responde HTTP 200 sem o campo da taxa. | `invalid-response` |
+
+Para trocar o cenário, reinicie os bancos simulados com a variável, por exemplo:
+
+```bash
+BETA_SCENARIO=ok npm run dev -w @consignado/bank-mocks
+```
+
+ou defina `BETA_SCENARIO` no `bank-mocks/.env`. Um valor desconhecido impede a subida, com uma mensagem que lista os cenários aceitos.
+
+### Testando com `curl`
+
+Com os bancos simulados no ar, use o CPF fictício `38192746500`:
+
+```bash
+# Banco Alpha
+curl -s -X POST localhost:4001/v1/loan-quotes \
+  -H 'content-type: application/json' \
+  -d '{"document":"38192746500","amountCents":1000000,"termMonths":24}'
+
+# Banco Beta, com o código HTTP e o tempo de resposta
+curl -s -w '\n%{http_code} %{time_total}s\n' -X POST localhost:4002/api/simulacao \
+  -H 'content-type: application/json' \
+  -d '{"cpf":"38192746500","valor":"10000.00","prazoMeses":24}'
+```
+
+Resultado esperado do Beta em cada cenário:
+
+| Cenário | Resposta |
+| --- | --- |
+| `ok` | `{"codigo":"…","taxaAnualPercentual":"21.50"}` e `200`, em menos de 0,3 s |
+| `slow` | A mesma oferta e `200`, depois de cerca de 10 s |
+| `unavailable` | `{"erro":"servico_indisponivel"}` e `503` |
+| `invalid` | `{"codigo":"…"}` e `200`, sem `taxaAnualPercentual` |
