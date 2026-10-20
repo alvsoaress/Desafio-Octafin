@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { isValidCpf } from '@consignado/shared';
 import express, { type ErrorRequestHandler, type Express } from 'express';
 import { z } from 'zod';
-import { delay } from './delay';
+import { waitWhileOpen } from './delay';
 
 export type AlphaOptions = {
   delayMs?: number;
@@ -49,7 +49,9 @@ export function createAlphaApp({ delayMs = ALPHA_DEFAULT_DELAY_MS }: AlphaOption
       return;
     }
 
-    await delay(delayMs);
+    if (!(await waitWhileOpen(response, delayMs))) {
+      return;
+    }
 
     response.json({
       quoteId: randomUUID(),
