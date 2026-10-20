@@ -1,6 +1,8 @@
-import { Decimal, floorCents, roundCentsHalfUp, roundRate } from './money';
+import type { Offer } from '@consignado/shared';
+import { Decimal, floorCents, formatRate, roundCentsHalfUp, roundRate } from './money';
 
 export const CONSIGNABLE_MARGIN_RATE = new Decimal('0.35');
+export const MAX_PLAUSIBLE_ANNUAL_RATE = new Decimal(10);
 
 const MONTHS_PER_YEAR = 12;
 
@@ -61,4 +63,40 @@ export function calculateMaxFinanceableCents(
   return floorCents(
     installment.times(presentValueFactor(monthlyRate, termMonths)).div(monthlyRate),
   );
+}
+
+export function isPlausibleAnnualRate(annualRate: Decimal): boolean {
+  return annualRate.gte(0) && annualRate.lte(MAX_PLAUSIBLE_ANNUAL_RATE);
+}
+
+export type OfferInput = {
+  amountCents: number;
+  termMonths: number;
+  annualRate: Decimal;
+  availableMarginCents: number;
+};
+
+export function calculateOffer({
+  amountCents,
+  termMonths,
+  annualRate,
+  availableMarginCents,
+}: OfferInput): Offer {
+  const monthlyRate = toMonthlyRate(annualRate);
+  const installmentCents = calculateInstallmentCents(amountCents, monthlyRate, termMonths);
+  const totalCents = installmentCents * termMonths;
+  const withinMargin = installmentCents <= availableMarginCents;
+
+  return {
+    annualRate: formatRate(annualRate),
+    monthlyRate: formatRate(monthlyRate),
+    installmentCents,
+    totalCents,
+    totalInterestCents: Math.max(0, totalCents - amountCents),
+    withinMargin,
+    maxInstallmentCents: availableMarginCents,
+    maxFinanceableCents: withinMargin
+      ? null
+      : calculateMaxFinanceableCents(availableMarginCents, monthlyRate, termMonths),
+  };
 }

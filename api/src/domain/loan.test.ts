@@ -1,9 +1,13 @@
+import { offerSchema } from '@consignado/shared';
 import { describe, expect, it } from 'vitest';
 import {
   CONSIGNABLE_MARGIN_RATE,
+  MAX_PLAUSIBLE_ANNUAL_RATE,
   calculateInstallmentCents,
   calculateMargin,
   calculateMaxFinanceableCents,
+  calculateOffer,
+  isPlausibleAnnualRate,
   toMonthlyRate,
 } from './loan';
 import { Decimal } from './money';
@@ -97,5 +101,119 @@ describe('calculateMaxFinanceableCents', () => {
 
   it('multiplica a parcela pelo prazo quando a taxa é zero', () => {
     expect(calculateMaxFinanceableCents(45000, new Decimal(0), 24)).toBe(1080000);
+  });
+});
+
+describe('isPlausibleAnnualRate', () => {
+  it('aceita taxas de 0% a 1000% a.a.', () => {
+    expect(MAX_PLAUSIBLE_ANNUAL_RATE.toString()).toBe('10');
+  });
+
+  it.each(['0', '0.24', '10'])('aceita %s', (rate) => {
+    expect(isPlausibleAnnualRate(new Decimal(rate))).toBe(true);
+  });
+
+  it.each(['-0.01', '10.01'])('recusa %s', (rate) => {
+    expect(isPlausibleAnnualRate(new Decimal(rate))).toBe(false);
+  });
+});
+
+describe('calculateOffer', () => {
+  const reference = {
+    amountCents: 1000000,
+    termMonths: 24,
+    annualRate: new Decimal('0.24'),
+  };
+
+  it('calcula a oferta do exemplo de referência dentro da margem', () => {
+    const offer = calculateOffer({ ...reference, availableMarginCents: 125000 });
+
+    expect(offer).toEqual({
+      annualRate: '0.240000',
+      monthlyRate: '0.018088',
+      installmentCents: 51733,
+      totalCents: 1241592,
+      totalInterestCents: 241592,
+      withinMargin: true,
+      maxInstallmentCents: 125000,
+      maxFinanceableCents: null,
+    });
+    expect(offerSchema.safeParse(offer).success).toBe(true);
+  });
+
+  it('considera dentro da margem a parcela igual à margem', () => {
+    const offer = calculateOffer({ ...reference, availableMarginCents: 51733 });
+
+    expect(offer.withinMargin).toBe(true);
+    expect(offer.maxFinanceableCents).toBeNull();
+  });
+
+  it('informa o valor financiável quando a parcela passa da margem', () => {
+    const offer = calculateOffer({ ...reference, availableMarginCents: 45000 });
+
+    expect(offer).toMatchObject({
+      installmentCents: 51733,
+      withinMargin: false,
+      maxInstallmentCents: 45000,
+      maxFinanceableCents: 869852,
+    });
+    expect(offerSchema.safeParse(offer).success).toBe(true);
+  });
+
+  it('informa valor financiável zero quando não há margem', () => {
+    const offer = calculateOffer({ ...reference, availableMarginCents: 0 });
+
+    expect(offer).toMatchObject({
+      withinMargin: false,
+      maxInstallmentCents: 0,
+      maxFinanceableCents: 0,
+    });
+    expect(offerSchema.safeParse(offer).success).toBe(true);
+  });
+
+  it('verifica a margem pela taxa de cada banco', () => {
+    const alpha = calculateOffer({ ...reference, availableMarginCents: 51000 });
+    const beta = calculateOffer({
+      ...reference,
+      annualRate: new Decimal('0.215'),
+      availableMarginCents: 51000,
+    });
+
+    expect(alpha).toMatchObject({ installmentCents: 51733, withinMargin: false });
+    expect(beta).toMatchObject({
+      monthlyRate: '0.016361',
+      installmentCents: 50717,
+      withinMargin: true,
+    });
+  });
+
+  it('calcula a oferta com taxa zero sem dividir por zero', () => {
+    const offer = calculateOffer({
+      ...reference,
+      annualRate: new Decimal(0),
+      availableMarginCents: 125000,
+    });
+
+    expect(offer).toMatchObject({
+      annualRate: '0.000000',
+      monthlyRate: '0.000000',
+      installmentCents: 41667,
+      totalCents: 1000008,
+      totalInterestCents: 8,
+    });
+    expect(offerSchema.safeParse(offer).success).toBe(true);
+  });
+
+  it('não informa juros negativos quando o arredondamento da parcela fica abaixo do valor', () => {
+    const offer = calculateOffer({
+      amountCents: 1000013,
+      termMonths: 24,
+      annualRate: new Decimal(0),
+      availableMarginCents: 125000,
+    });
+
+    expect(offer.totalCents).toBe(1000008);
+    expect(offer.totalInterestCents).toBe(0);
+    expect(offerSchema.safeParse(offer).success).toBe(true);
   });
 });
