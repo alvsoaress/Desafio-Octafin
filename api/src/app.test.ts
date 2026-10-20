@@ -5,7 +5,11 @@ import { createApp } from './app';
 const webOrigin = 'http://localhost:5173';
 
 function createTestApp() {
-  return createApp({ logger: { info: vi.fn(), error: vi.fn() }, webOrigin });
+  return createApp({
+    simulationService: { simulate: vi.fn() },
+    logger: { info: vi.fn(), error: vi.fn() },
+    webOrigin,
+  });
 }
 
 describe('createApp', () => {

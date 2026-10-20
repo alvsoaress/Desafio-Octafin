@@ -1,7 +1,7 @@
 import { APP_NAME } from '@consignado/shared';
 import { createApp } from './app';
 import { loadEnv, type ApiConfig } from './config/env';
-import { createLogger } from './infra/logger';
+import { createContainer } from './container';
 
 let config: ApiConfig;
 
@@ -12,8 +12,8 @@ try {
   process.exit(1);
 }
 
-const logger = createLogger({ level: config.logLevel });
+const { logger, simulationService } = createContainer(config);
 
-createApp({ logger, webOrigin: config.webOrigin }).listen(config.port, () => {
+createApp({ simulationService, logger, webOrigin: config.webOrigin }).listen(config.port, () => {
   logger.info({ port: config.port }, `${APP_NAME}: API ouvindo na porta ${config.port}`);
 });
