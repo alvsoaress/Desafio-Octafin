@@ -165,11 +165,22 @@ describe('toFieldErrors', () => {
     });
   });
 
-  it('usa a chave body quando o corpo não é um objeto', () => {
-    const result = simulationRequestSchema.safeParse([]);
+  it.each([[[]], [null], ['texto'], [42]])(
+    'usa a chave body quando o corpo é %j, sem lançar erro',
+    (body) => {
+      const result = simulationRequestSchema.safeParse(body);
+
+      expect(result.success ? {} : toFieldErrors(result.error)).toEqual({
+        body: validationMessages.invalidValue,
+      });
+    },
+  );
+
+  it('usa a chave body com "Campo obrigatório." quando não há corpo', () => {
+    const result = simulationRequestSchema.safeParse(undefined);
 
     expect(result.success ? {} : toFieldErrors(result.error)).toEqual({
-      body: validationMessages.invalidValue,
+      body: validationMessages.required,
     });
   });
 });

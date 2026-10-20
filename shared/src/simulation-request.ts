@@ -65,6 +65,10 @@ export const simulationRequestSchema = z
     error: validationMessages.existingDeductionsCents,
     path: ['existingDeductionsCents'],
     when: ({ value }) => {
+      if (typeof value !== 'object' || value === null) {
+        return false;
+      }
+
       const input = value as Record<string, unknown>;
 
       return (
