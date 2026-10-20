@@ -4,6 +4,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { FormErrors } from '../lib/form';
+import { fillForm, referenceRequest } from '../test/fill-form';
 import { SimulationForm } from './SimulationForm';
 
 const [cpf] = fictitiousCpfs;
@@ -19,20 +20,11 @@ function renderForm(props: { disabled?: boolean; serverErrors?: FormErrors } = {
 
 const input = (label: string) => screen.getByLabelText(label);
 
-async function fillReference(user: ReturnType<typeof userEvent.setup>, termMonths = '24') {
-  await user.type(input('CPF'), cpf.digits);
-  await user.type(input('CNPJ do empregador'), cnpj.digits);
-  await user.type(input('Salário bruto mensal'), '500000');
-  await user.type(input('Descontos consignados existentes'), '50000');
-  await user.type(input('Valor desejado'), '1000000');
-  await user.type(input('Prazo (meses)'), termMonths);
-}
-
 describe('SimulationForm', () => {
   it('aplica a máscara de cada campo durante a digitação', async () => {
     const { user } = renderForm();
 
-    await fillReference(user);
+    await fillForm(user);
     await user.type(input('Prazo (meses)'), 'ab');
 
     expect(input('CPF')).toHaveValue(cpf.masked);
@@ -71,7 +63,7 @@ describe('SimulationForm', () => {
   it('no envio inválido, mostra o erro, foca o primeiro campo inválido e não envia', async () => {
     const { user, onSubmit } = renderForm();
 
-    await fillReference(user, '97');
+    await fillForm(user, { 'Prazo (meses)': '97' });
     await user.click(screen.getByRole('button', { name: 'Simular' }));
 
     expect(input('Prazo (meses)')).toHaveAccessibleDescription(validationMessages.termMonths);
@@ -91,17 +83,10 @@ describe('SimulationForm', () => {
   it('envia o exemplo de referência em centavos e mantém os valores digitados', async () => {
     const { user, onSubmit } = renderForm();
 
-    await fillReference(user);
+    await fillForm(user);
     await user.click(screen.getByRole('button', { name: 'Simular' }));
 
-    expect(onSubmit).toHaveBeenCalledExactlyOnceWith({
-      cpf: cpf.digits,
-      employerCnpj: cnpj.digits,
-      salaryCents: 500000,
-      existingDeductionsCents: 50000,
-      requestedAmountCents: 1000000,
-      termMonths: 24,
-    });
+    expect(onSubmit).toHaveBeenCalledExactlyOnceWith(referenceRequest);
     expect(input('CPF')).toHaveValue(cpf.masked);
     expect(input('Valor desejado')).toHaveValue('10.000,00');
     expect(input('Prazo (meses)')).toHaveValue('24');
@@ -110,7 +95,7 @@ describe('SimulationForm', () => {
   it('desabilitado, não envia', async () => {
     const { user, onSubmit } = renderForm({ disabled: true });
 
-    await fillReference(user);
+    await fillForm(user);
     await user.type(input('Prazo (meses)'), '{Enter}');
 
     expect(screen.getByRole('button', { name: 'Simular' })).toBeDisabled();
