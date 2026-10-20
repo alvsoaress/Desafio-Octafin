@@ -38,3 +38,19 @@ export function isValidCpf(value: string): boolean {
 export function normalizeCnpj(value: string): string | null {
   return normalizeDocument(value);
 }
+
+const CNPJ_FIRST_WEIGHTS = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+const CNPJ_SECOND_WEIGHTS = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+
+export function isValidCnpj(value: string): boolean {
+  const digits = normalizeCnpj(value);
+
+  if (digits?.length !== 14 || isRepeatedDigit(digits)) {
+    return false;
+  }
+
+  return (
+    checkDigit(digits, CNPJ_FIRST_WEIGHTS) === Number(digits[12]) &&
+    checkDigit(digits, CNPJ_SECOND_WEIGHTS) === Number(digits[13])
+  );
+}

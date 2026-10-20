@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isValidCpf, normalizeCnpj, normalizeCpf } from './documents';
+import { isValidCnpj, isValidCpf, normalizeCnpj, normalizeCpf } from './documents';
 
 describe('normalizeCpf', () => {
   it('remove a máscara', () => {
@@ -63,5 +63,37 @@ describe('normalizeCnpj', () => {
 
   it('recusa letras', () => {
     expect(normalizeCnpj('12.ABC.345/01DE-35')).toBeNull();
+  });
+});
+
+describe('isValidCnpj', () => {
+  it('aceita CNPJ válido com e sem máscara', () => {
+    expect(isValidCnpj('11.222.333/0001-81')).toBe(true);
+    expect(isValidCnpj('11222333000181')).toBe(true);
+  });
+
+  it('recusa erro no primeiro dígito verificador', () => {
+    expect(isValidCnpj('11222333000191')).toBe(false);
+  });
+
+  it('recusa erro no segundo dígito verificador', () => {
+    expect(isValidCnpj('11222333000182')).toBe(false);
+  });
+
+  it.each(['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'])(
+    'recusa a sequência repetida de %s',
+    (digit) => {
+      expect(isValidCnpj(digit.repeat(14))).toBe(false);
+    },
+  );
+
+  it('recusa tamanho errado', () => {
+    expect(isValidCnpj('1122233300018')).toBe(false);
+    expect(isValidCnpj('112223330001810')).toBe(false);
+  });
+
+  it('recusa CNPJ alfanumérico e string vazia', () => {
+    expect(isValidCnpj('12.ABC.345/01DE-35')).toBe(false);
+    expect(isValidCnpj('')).toBe(false);
   });
 });
