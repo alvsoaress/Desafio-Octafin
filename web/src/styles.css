@@ -156,10 +156,6 @@ button:disabled {
   align-self: stretch;
 }
 
-.status-region:empty {
-  display: none;
-}
-
 .loading {
   padding: var(--space-4);
   font-weight: 600;
