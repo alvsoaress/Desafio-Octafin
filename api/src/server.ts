@@ -1,8 +1,19 @@
 import { APP_NAME } from '@consignado/shared';
 import { createApp } from './app';
+import { loadEnv, type ApiConfig } from './config/env';
+import { createLogger } from './infra/logger';
 
-const port = Number(process.env.PORT ?? 3000);
+let config: ApiConfig;
 
-createApp().listen(port, () => {
-  console.log(`${APP_NAME}: API ouvindo na porta ${port}`);
+try {
+  config = loadEnv(process.env);
+} catch (error) {
+  console.error(error instanceof Error ? error.message : error);
+  process.exit(1);
+}
+
+const logger = createLogger({ level: config.logLevel });
+
+createApp({ logger, webOrigin: config.webOrigin }).listen(config.port, () => {
+  logger.info({ port: config.port }, `${APP_NAME}: API ouvindo na porta ${config.port}`);
 });

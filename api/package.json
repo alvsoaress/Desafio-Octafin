@@ -11,6 +11,7 @@
     "test": "vitest run"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/supertest": "^7.2.1",
     "nock": "^15.0.5",
@@ -20,6 +21,7 @@
   },
   "dependencies": {
     "@consignado/shared": "*",
+    "cors": "^2.8.6",
     "decimal.js": "^10.6.0",
     "express": "^5.3.0",
     "pino": "^10.4.0",
