@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@consignado/shared": "*",
+    "decimal.js": "^10.6.0",
     "express": "^5.3.0"
   }
 }
