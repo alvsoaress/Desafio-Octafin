@@ -3,9 +3,11 @@ import { isValidCpf } from '@consignado/shared';
 import express, { type ErrorRequestHandler, type Express } from 'express';
 import { z } from 'zod';
 import { waitWhileOpen } from './delay';
+import { requestLog, type LogLine } from './request-log';
 
 export type AlphaOptions = {
   delayMs?: number;
+  log?: LogLine;
 };
 
 const ALPHA_DEFAULT_DELAY_MS = 100;
@@ -37,8 +39,12 @@ const handleMalformedJson: ErrorRequestHandler = (_error, _request, response, _n
   response.status(400).json(invalidRequest);
 };
 
-export function createAlphaApp({ delayMs = ALPHA_DEFAULT_DELAY_MS }: AlphaOptions = {}): Express {
+export function createAlphaApp({
+  delayMs = ALPHA_DEFAULT_DELAY_MS,
+  log,
+}: AlphaOptions = {}): Express {
   const app = express();
+  app.use(requestLog('alpha', log));
   app.use(express.json());
 
   app.post('/v1/loan-quotes', async (request, response) => {

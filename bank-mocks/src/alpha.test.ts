@@ -5,6 +5,8 @@ import { alphaRateForTerm, createAlphaApp } from './alpha';
 
 const cpf = fictitiousCpfs[0];
 
+const silentLog = () => {};
+
 const validBody = {
   document: cpf.digits,
   amountCents: 1000000,
@@ -16,7 +18,7 @@ const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
 type AlphaQuote = { quoteId: string; annualInterestRate: string };
 
 function postQuote(body: unknown) {
-  return request(createAlphaApp({ delayMs: 0 }))
+  return request(createAlphaApp({ delayMs: 0, log: silentLog }))
     .post('/v1/loan-quotes')
     .send(body as object);
 }
@@ -87,7 +89,7 @@ describe('POST /v1/loan-quotes', () => {
   });
 
   it('recusa JSON malformado com HTTP 400', async () => {
-    const response = await request(createAlphaApp({ delayMs: 0 }))
+    const response = await request(createAlphaApp({ delayMs: 0, log: silentLog }))
       .post('/v1/loan-quotes')
       .set('content-type', 'application/json')
       .send('{"document":');

@@ -6,6 +6,8 @@ import { BETA_SCENARIOS } from './config';
 
 const cpf = fictitiousCpfs[0];
 
+const silentLog = () => {};
+
 const validBody = {
   cpf: cpf.digits,
   valor: '10000.00',
@@ -17,7 +19,7 @@ const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
 type BetaQuote = { codigo: string; taxaAnualPercentual?: string };
 
 function postSimulation(body: unknown, options: BetaOptions = {}) {
-  return request(createBetaApp({ delayMs: 0, slowDelayMs: 0, ...options }))
+  return request(createBetaApp({ delayMs: 0, slowDelayMs: 0, log: silentLog, ...options }))
     .post('/api/simulacao')
     .send(body as object);
 }
@@ -56,7 +58,7 @@ describe('POST /api/simulacao', () => {
     });
 
     it('recusa JSON malformado com HTTP 400', async () => {
-      const response = await request(createBetaApp({ scenario: 'ok', delayMs: 0 }))
+      const response = await request(createBetaApp({ scenario: 'ok', delayMs: 0, log: silentLog }))
         .post('/api/simulacao')
         .set('content-type', 'application/json')
         .send('{"cpf":');
@@ -94,7 +96,7 @@ describe('POST /api/simulacao', () => {
     });
 
     it('responde HTTP 503 mesmo com JSON malformado', async () => {
-      const response = await request(createBetaApp({ scenario: 'unavailable' }))
+      const response = await request(createBetaApp({ scenario: 'unavailable', log: silentLog }))
         .post('/api/simulacao')
         .set('content-type', 'application/json')
         .send('{"cpf":');

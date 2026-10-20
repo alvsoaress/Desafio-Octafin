@@ -4,11 +4,13 @@ import express, { type ErrorRequestHandler, type Express } from 'express';
 import { z } from 'zod';
 import type { BetaScenario } from './config';
 import { waitWhileOpen } from './delay';
+import { requestLog, type LogLine } from './request-log';
 
 export type BetaOptions = {
   scenario?: BetaScenario;
   delayMs?: number;
   slowDelayMs?: number;
+  log?: LogLine;
 };
 
 export const BETA_SLOW_DELAY_MS = 10_000;
@@ -38,8 +40,10 @@ export function createBetaApp({
   scenario = 'slow',
   delayMs = BETA_DEFAULT_DELAY_MS,
   slowDelayMs = BETA_SLOW_DELAY_MS,
+  log,
 }: BetaOptions = {}): Express {
   const app = express();
+  app.use(requestLog('beta', log));
 
   if (scenario === 'unavailable') {
     app.post(SIMULATION_ROUTE, (_request, response) => {
