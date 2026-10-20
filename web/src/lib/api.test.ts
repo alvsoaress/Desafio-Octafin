@@ -1,12 +1,13 @@
-import type { SimulationRequest, SimulationResponse } from '@consignado/shared';
+import type { SimulationRequest } from '@consignado/shared';
 import { fictitiousCnpjs, fictitiousCpfs } from '@consignado/shared/fixtures';
 import { describe, expect, it, vi } from 'vitest';
+import { referenceResponse as simulationResponse } from '../test/responses';
 import { simulate } from './api';
 
 const [cpf] = fictitiousCpfs;
 const [cnpj] = fictitiousCnpjs;
 const baseUrl = 'http://api.test';
-const requestId = '7d2c1f4e-8a3b-4c5d-9e6f-0a1b2c3d4e5f';
+const { requestId } = simulationResponse;
 
 const simulationRequest: SimulationRequest = {
   cpf: cpf.digits,
@@ -15,36 +16,6 @@ const simulationRequest: SimulationRequest = {
   existingDeductionsCents: 50000,
   requestedAmountCents: 1000000,
   termMonths: 24,
-};
-
-const simulationResponse: SimulationResponse = {
-  requestId,
-  partial: true,
-  margin: { consignableCents: 175000, availableCents: 125000 },
-  request: { requestedAmountCents: 1000000, termMonths: 24 },
-  results: [
-    {
-      bankId: 'alpha',
-      bankName: 'Banco Alpha',
-      status: 'success',
-      offer: {
-        annualRate: '0.240000',
-        monthlyRate: '0.018088',
-        installmentCents: 51733,
-        totalCents: 1241592,
-        totalInterestCents: 241592,
-        withinMargin: true,
-        maxInstallmentCents: 125000,
-        maxFinanceableCents: null,
-      },
-    },
-    {
-      bankId: 'beta',
-      bankName: 'Banco Beta',
-      status: 'timeout',
-      error: { code: 'timeout', message: 'O Banco Beta não respondeu a tempo.' },
-    },
-  ],
 };
 
 function fakeFetch(status: number, body: unknown) {
