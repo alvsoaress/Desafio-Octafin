@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import {
   simulationRequestSchema,
   simulationResponseSchema,
+  type SimulationRequest,
   type SimulationRequestInput,
 } from '@consignado/shared';
 import { fictitiousCnpjs, fictitiousCpfs } from '@consignado/shared/fixtures';
@@ -50,7 +51,13 @@ function fakeLogger() {
 }
 
 function createService(adapters: BankAdapter[], timeoutMs = 1000, logger = fakeLogger()) {
-  return new SimulationService({ adapters, timeoutMs, logger });
+  const service = new SimulationService({ adapters, timeoutMs, logger });
+
+  return {
+    async simulate(request: SimulationRequest, requestId: string) {
+      return simulationResponseSchema.parse(await service.simulate(request, requestId));
+    },
+  };
 }
 
 describe('bankErrorMessage', () => {
@@ -107,7 +114,6 @@ describe('SimulationService', () => {
         },
       ],
     });
-    expect(simulationResponseSchema.safeParse(response).success).toBe(true);
   });
 
   it('mantém a ordem dos bancos registrados mesmo quando o segundo responde antes', async () => {
@@ -165,7 +171,6 @@ describe('SimulationService', () => {
       status: 'timeout',
       error: { code: 'timeout', message: 'O Banco Beta não respondeu a tempo.' },
     });
-    expect(simulationResponseSchema.safeParse(response).success).toBe(true);
   });
 
   it('aborta o sinal entregue ao banco quando o tempo limite estoura', async () => {
@@ -275,8 +280,6 @@ describe('SimulationService', () => {
         offer: { withinMargin: false, maxInstallmentCents: 0, maxFinanceableCents: 0 },
       });
     }
-
-    expect(simulationResponseSchema.safeParse(response).success).toBe(true);
   });
 
   it('devolve resultado parcial com dois erros quando nenhum banco responde', async () => {
@@ -303,7 +306,6 @@ describe('SimulationService', () => {
         },
       },
     ]);
-    expect(simulationResponseSchema.safeParse(response).success).toBe(true);
   });
 
   it('informa o valor financiável do exemplo de margem excedida', async () => {
@@ -319,6 +321,5 @@ describe('SimulationService', () => {
       status: 'success',
       offer: { installmentCents: 51733, withinMargin: false, maxFinanceableCents: 869852 },
     });
-    expect(simulationResponseSchema.safeParse(response).success).toBe(true);
   });
 });

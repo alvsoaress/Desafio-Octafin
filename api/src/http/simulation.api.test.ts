@@ -63,7 +63,14 @@ function createTestApp({
 }
 
 function simulate(app: ReturnType<typeof createTestApp>, body: object = validBody) {
-  return request(app).post('/api/simulations').send(body);
+  return request(app)
+    .post('/api/simulations')
+    .send(body)
+    .expect((response) => {
+      if (response.status === 200) {
+        simulationResponseSchema.parse(response.body);
+      }
+    });
 }
 
 describe('POST /api/simulations', () => {
@@ -71,7 +78,6 @@ describe('POST /api/simulations', () => {
     const response = await simulate(createTestApp());
 
     expect(response.status).toBe(200);
-    expect(simulationResponseSchema.safeParse(response.body).success).toBe(true);
     expect(response.body).toMatchObject({
       requestId: response.headers['x-request-id'],
       partial: false,
@@ -139,7 +145,6 @@ describe('POST /api/simulations', () => {
     });
 
     expect(response.status).toBe(200);
-    expect(simulationResponseSchema.safeParse(response.body).success).toBe(true);
     expect(response.body).toMatchObject({ margin: { availableCents: 0 } });
     expect(response.body).toMatchObject({
       results: [
@@ -163,7 +168,6 @@ describe('POST /api/simulations', () => {
     );
 
     expect(response.status).toBe(200);
-    expect(simulationResponseSchema.safeParse(response.body).success).toBe(true);
     expect(response.body).toMatchObject({
       partial: true,
       results: [
@@ -197,7 +201,6 @@ describe('POST /api/simulations', () => {
 
     expect(performance.now() - startedAt).toBeLessThan(500);
     expect(response.status).toBe(200);
-    expect(simulationResponseSchema.safeParse(response.body).success).toBe(true);
     expect(response.body).toMatchObject({
       partial: true,
       results: [
