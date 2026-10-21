@@ -48,6 +48,14 @@ describe('simulate', () => {
 
   it.each([
     ['fora do contrato', { ...simulationResponse, partial: false }],
+    [
+      'com o mesmo banco duas vezes',
+      {
+        ...simulationResponse,
+        partial: false,
+        results: [simulationResponse.results[0], simulationResponse.results[0]],
+      },
+    ],
     ['que não é JSON', '<html>'],
   ])('trata como erro um 200 %s', async (_case, body) => {
     const outcome = await simulate(simulationRequest, { baseUrl, fetch: fakeFetch(200, body) });

@@ -7,6 +7,7 @@ import {
   betaTimeout,
   betaUnavailable,
   bothSuccessResponse,
+  oneApprovedResponse,
   overMarginResponse,
   referenceResponse,
   zeroMarginResponse,
@@ -17,6 +18,7 @@ describe('respostas fictícias', () => {
     ['referenceResponse', referenceResponse],
     ['bothSuccessResponse', bothSuccessResponse],
     ['overMarginResponse', overMarginResponse],
+    ['oneApprovedResponse', oneApprovedResponse],
     ['zeroMarginResponse', zeroMarginResponse],
     ['allFailedResponse', allFailedResponse],
   ])('%s passa no contrato da resposta', (_name, response) => {
