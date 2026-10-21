@@ -11,7 +11,7 @@ npm ci
 npm run dev
 ```
 
-O `npm run dev` sobe o front (http://localhost:5173), a API (porta 3000) e os dois bancos simulados (portas 4001 e 4002). Não é preciso criar `.env`: cada pacote tem um `.env.example` com valores que já funcionam.
+O `npm run dev` sobe o front (http://localhost:5173), a API (porta 3000) e os dois bancos simulados (portas 4001 e 4002). Não é preciso criar `.env`: a API lê o próprio `.env.example` quando não há `.env`, e os bancos simulados e o front usam no código os mesmos padrões dos seus exemplos.
 
 Para testar na tela, use os dados fictícios de referência: nome `Maria Fictícia da Silva`, e-mail `maria.ficticia@example.com`, CPF `381.927.465-00`, CNPJ `47.182.936/0001-44`, salário `5.000,00`, descontos `500,00`, valor `10.000,00` e prazo `24`. Os dois bancos aprovam, com parcelas de R$ 517,33 (Alpha) e R$ 507,17 (Beta).
 
@@ -51,6 +51,7 @@ Para mudar alguma, copie o `.env.example` do pacote para `.env` e edite, ou pass
 | `WEB_ORIGIN` | api | `http://localhost:5173` no exemplo | Única origem liberada no CORS. |
 | `ALPHA_BASE_URL`, `BETA_BASE_URL` | api | `http://localhost:4001` e `:4002` no exemplo | URLs dos bancos. |
 | `PORT`, `LOG_LEVEL` | api | `3000`, `info` | Porta e nível de log da API. |
+| `ALPHA_PORT`, `BETA_PORT` | bank-mocks | `4001`, `4002` | Portas dos bancos simulados. |
 | `BETA_SCENARIO` | bank-mocks | `ok` | Cenário do Beta. |
 | `VITE_API_URL` | web | `http://localhost:3000` | URL da API usada pelo front. |
 
@@ -109,84 +110,80 @@ Para produção: `npm run build`, depois `npm start -w @consignado/api`, `npm st
 
 ## Melhorias e proposições
 
-Cada proposta segue o formato **Problema**, **Proposta** e **Por quê**. As implementadas já estão no código; as planejadas ficaram fora desta entrega e estão em ordem de prioridade.
+Cada proposta segue o formato **Problema**, **Proposta** e **Por quê**, e o **Por quê** indica o que ela melhora: o uso pelo cliente, a segurança, a qualidade ou a infraestrutura do serviço. As implementadas já estão no código; as planejadas ficaram fora desta entrega e estão em ordem de prioridade.
 
 ### Implementadas
 
 1. **Resultado de cada banco, mesmo quando algum falha**
    - *Problema:* a empresa depende de bancos que não controla. Se um demora ou cai, a simulação inteira não pode travar nem falhar junto.
    - *Proposta:* consulta paralela com tempo limite de 3 s por banco, que aborta a requisição de verdade. Cada falha vira um status daquele banco (`timeout`, `unavailable` ou `invalid-response`), a resposta indica `partial: true` e a tela avisa que alguns bancos não responderam.
-   - *Por quê:* o cliente espera no máximo o tempo limite e vê as ofertas que chegaram, em vez de uma tela de erro por causa de um parceiro.
+   - *Por quê (uso pelo cliente e infraestrutura):* o cliente espera no máximo o tempo limite e vê as ofertas que chegaram, em vez de uma tela de erro por causa de um parceiro.
 2. **Recusa do banco separada de falha técnica**
    - *Problema:* "o banco recusou" e "o banco não respondeu" pedem ações opostas do cliente, e cada banco avisa a recusa de um jeito.
    - *Proposta:* cada adaptador traduz a recusa do seu banco (HTTP 200 com `decision` no Alpha, HTTP 422 com código no Beta) para o status `rejected` com um motivo, mostrado em português no cartão. Um código desconhecido continua sendo recusa, e um erro HTTP desconhecido continua `unavailable`.
-   - *Por quê:* o cliente sabe que tentar de novo não muda uma recusa, mas pode mudar uma falha. Uma queda do parceiro nunca aparece como "Reprovado".
+   - *Por quê (uso pelo cliente):* o cliente sabe que tentar de novo não muda uma recusa, mas pode mudar uma falha. Uma queda do parceiro nunca aparece como "Reprovado".
 3. **Resultado que ajuda a decidir**
    - *Problema:* uma parcela que não cabe na margem só diz "não", e com várias ofertas o cliente precisa comparar sozinho.
    - *Proposta:* quando a parcela passa da margem, o cartão mostra o valor máximo que cabe no mesmo prazo. Com duas ou mais ofertas aprovadas, a de menor parcela ganha um selo.
-   - *Por quê:* o cliente sai da simulação com um próximo passo, em vez de recomeçar no escuro.
+   - *Por quê (uso pelo cliente):* o cliente sai da simulação com um próximo passo, em vez de recomeçar no escuro.
 4. **Dados pessoais mínimos e fora dos logs**
    - *Problema:* um simulador de crédito recebe CPF, salário e contato, e logs costumam vazar esses dados.
    - *Proposta:* nada é gravado. Cada banco recebe só o que usa, e toda linha de log passa por um mascaramento recursivo que troca nome, e-mail, CPF, CNPJ, valores, corpo e credenciais por `[REDACTED]`.
-   - *Por quê:* menos exposição em caso de vazamento e aderência aos princípios de finalidade e necessidade da LGPD.
+   - *Por quê (segurança):* menos exposição em caso de vazamento e aderência aos princípios de finalidade e necessidade da LGPD.
 5. **Superfície da API reduzida**
    - *Problema:* uma API aberta aceita qualquer origem e qualquer corpo, e mensagens de erro detalhadas expõem a parte interna.
    - *Proposta:* CORS só para a origem configurada, corpo limitado a 10 KB, campos fora do contrato recusados, URLs dos bancos só da configuração e erro 500 sem detalhes internos.
-   - *Por quê:* menos vetores de abuso e de vazamento de informação interna.
+   - *Por quê (segurança):* menos vetores de abuso e de vazamento de informação interna.
 6. **Validação compartilhada e contrato com regras de consistência**
    - *Problema:* regras duplicadas entre front e API divergem com o tempo, e um esquema que só confere tipos aceita respostas impossíveis.
    - *Proposta:* um único esquema Zod no `shared`, usado pelo front e pela API, que também recusa números incoerentes, como um total diferente de parcela × prazo.
-   - *Por quê:* o cliente vê a mesma mensagem nos dois lados, e um erro de cálculo quebra o teste antes de chegar à tela.
+   - *Por quê (qualidade e uso pelo cliente):* o cliente vê a mesma mensagem nos dois lados, e um erro de cálculo quebra o teste antes de chegar à tela.
 7. **Rastreabilidade por requisição**
    - *Problema:* sem identificador, um erro relatado pelo cliente não é encontrado nos logs.
-   - *Proposta:* todo pedido recebe um `x-request-id`, devolvido ao cliente, mostrado na tela quando a simulação falha e presente em cada linha de log, com status e duração por banco.
-   - *Por quê:* o suporte localiza a simulação pelo código que o cliente informa.
+   - *Proposta:* todo pedido recebe um `x-request-id`, devolvido ao cliente, mostrado na tela quando a API devolve erro e presente em cada linha de log, com status e duração por banco.
+   - *Por quê (qualidade e infraestrutura):* o suporte localiza a simulação pelo código que o cliente informa.
 8. **Arquitetura verificada pelo lint**
    - *Problema:* a regra de que o domínio não depende de infraestrutura só valeria enquanto alguém lembrasse dela na revisão.
    - *Proposta:* o ESLint barra imports de Express, `fetch` e infraestrutura no domínio, e o `npm run check` reúne lint, tipos, testes e build num comando só.
-   - *Por quê:* uma violação de camada no domínio quebra a verificação local antes de chegar à `main`.
+   - *Por quê (qualidade):* uma violação de camada no domínio quebra a verificação local antes de chegar à `main`.
 
 ### Planejadas, em ordem de prioridade
 
 O critério é atacar primeiro o que o cliente sente hoje, depois o que dá visibilidade e proteção contra os bancos, e por fim o que amplia o produto.
 
 1. **Tela sempre recuperável**
-   - *Problema:* erros de validação antigos continuam na tela numa nova tentativa, uma falha inesperada no cliente da API pode deixar a tela presa em "Consultando bancos…", e uma oferta incoerente de um banco faz a tela recusar a resposta inteira.
+   - *Problema:* erros de validação antigos continuam na tela numa nova tentativa, uma falha inesperada no cliente da API pode deixar a tela presa em "Consultando bancos…", e uma oferta incoerente de um banco faz a tela recusar a resposta inteira, sem mostrar o código para suporte.
    - *Proposta:* limpar os erros ao reenviar, tratar toda falha como erro com nova tentativa, descartar respostas de simulações já substituídas e validar a resposta banco a banco, rebaixando só o banco incoerente para "Sem resposta".
-   - *Por quê:* vem primeiro porque é um defeito que o cliente já encontra, e a correção é pequena.
+   - *Por quê (uso pelo cliente):* o cliente nunca fica preso nem vê um erro antigo, e sempre tem como tentar de novo. Vem primeiro porque é um defeito que ele já encontra, e a correção é pequena.
 2. **Visibilidade por banco**
    - *Problema:* o log registra o status de cada banco, mas não o código HTTP que ele devolveu nem o motivo da recusa. Um 400 (erro nosso) e um 503 (queda do parceiro) parecem iguais.
    - *Proposta:* registrar o código HTTP e o motivo da recusa em cada consulta, e expor métricas e traces por banco com OpenTelemetry: taxa de falha, de recusa e latência.
-   - *Por quê:* a operação descobre um parceiro instável antes do cliente reclamar, e os números calibram a proposta seguinte.
+   - *Por quê (infraestrutura):* a operação descobre um parceiro instável antes do cliente reclamar, e os números calibram a proposta seguinte.
 3. **Proteção contra banco instável**
    - *Problema:* um banco fora do ar faz toda simulação esperar o tempo limite, uma falha passageira vira `unavailable`, e a API continua esperando os bancos mesmo quando o cliente fecha a página.
    - *Proposta:* decoradores da porta `BankAdapter`, sem mudar os adaptadores: circuit breaker que responde `unavailable` na hora depois de falhas seguidas, nova tentativa com recuo dentro do tempo limite e cache curto de taxas por banco e prazo, sem CPF na chave. O fechamento da conexão também aborta as consultas em andamento.
-   - *Por quê:* respostas mais rápidas quando um parceiro cai e menos carga desperdiçada nos bancos. Depende da visibilidade do item 2 para calibrar os limites.
+   - *Por quê (infraestrutura e uso pelo cliente):* respostas mais rápidas quando um parceiro cai e menos carga desperdiçada nos bancos. Depende da visibilidade do item 2 para calibrar os limites.
 4. **CNPJ alfanumérico**
    - *Problema:* desde julho de 2026, a Receita emite CNPJs com letras para inscrições novas, e a validação atual só aceita números.
    - *Proposta:* adaptar a validação, a normalização e a máscara ao novo formato.
-   - *Por quê:* hoje quem trabalha numa empresa aberta recentemente não consegue simular.
+   - *Por quê (uso pelo cliente):* hoje quem trabalha numa empresa aberta recentemente não consegue simular.
 5. **Resultado de cada banco em tempo real**
    - *Problema:* o carregamento é global e dura até o banco mais lento responder.
    - *Proposta:* uma rota de eventos (SSE) que envia o resultado de cada banco assim que ele chega, com carregamento por cartão.
-   - *Por quê:* o cliente vê a primeira oferta em centenas de milissegundos, sem esperar o banco mais lento.
+   - *Por quê (uso pelo cliente):* o cliente vê a primeira oferta em centenas de milissegundos, sem esperar o banco mais lento.
 6. **Custo real do empréstimo**
    - *Problema:* a simulação mostra só juros, então o custo real é maior que o exibido.
    - *Proposta:* calcular IOF, tarifas e CET no domínio e informar o valor máximo aceito quando o banco recusa por teto.
-   - *Por quê:* o cliente compara as ofertas pelo custo total, que é o que ele de fato paga.
+   - *Por quê (uso pelo cliente):* o cliente compara as ofertas pelo custo total, que é o que ele de fato paga.
 7. **Autenticação e limite de requisições**
    - *Problema:* qualquer cliente pode chamar a API quantas vezes quiser, e cada chamada consulta todos os bancos.
    - *Proposta:* um middleware de autenticação e de limite por cliente antes da rota, com respostas 401 e 429 no formato dos demais erros.
-   - *Por quê:* protege a API e os bancos parceiros de uso abusivo. Fica atrás das anteriores porque o MVP ainda não está publicado.
-8. **Resultado por e-mail, com consentimento**
-   - *Problema:* o cliente perde a simulação ao fechar a página, e o e-mail coletado ainda não é usado.
-   - *Proposta:* com o consentimento explícito do cliente, enviar um resumo das ofertas para o e-mail informado, sem CPF nem salário no corpo.
-   - *Por quê:* o cliente retoma a decisão depois, e o e-mail passa a ter um uso concreto e autorizado.
-9. **Testes mais fortes**
+   - *Por quê (segurança e infraestrutura):* protege a API e os bancos parceiros de uso abusivo. Fica atrás das anteriores porque o MVP ainda não está publicado.
+8. **Testes mais fortes**
    - *Problema:* exemplos fixos não provam que as fórmulas valem para qualquer entrada, os testes dos adaptadores se repetem e o fluxo completo na tela foi verificado à mão.
    - *Proposta:* testes de propriedade nas fórmulas, uma suíte de contrato que todo adaptador de banco precisa passar, mutation testing (Stryker) nos módulos financeiros e Playwright com os cenários do Beta.
-   - *Por quê:* mais confiança nos cálculos, e um banco novo testado da mesma forma que os existentes.
-10. **CI, Docker e publicação**
-    - *Problema:* a verificação antes do merge depende de rodar o `npm run check` à mão, rodar o projeto exige Node 22 e nada é publicado.
-    - *Proposta:* GitHub Actions com `npm run check` em todo pull request e a `main` protegida pelo check, `docker compose up` subindo os três serviços, CD a partir da `main` e verificação de camadas no lint estendida a todo o código.
-    - *Por quê:* nenhum código quebrado chega à `main`, qualquer pessoa sobe o projeto com um comando e cada merge chega a um ambiente de demonstração.
+   - *Por quê (qualidade):* mais confiança nos cálculos, e um banco novo testado da mesma forma que os existentes.
+9. **CI, Docker e publicação**
+   - *Problema:* a verificação antes do merge depende de rodar o `npm run check` à mão, rodar o projeto exige Node 22 e nada é publicado.
+   - *Proposta:* GitHub Actions com `npm run check` em todo pull request e a `main` protegida pelo check, `docker compose up` subindo os três serviços, CD a partir da `main` e verificação de camadas no lint estendida a todo o código.
+   - *Por quê (infraestrutura e qualidade):* nenhum código quebrado chega à `main`, qualquer pessoa sobe o projeto com um comando e cada merge chega a um ambiente de demonstração.
