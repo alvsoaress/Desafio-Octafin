@@ -334,3 +334,50 @@ A API escreve logs em JSON com o `pino`. Cada requisição gera uma linha com s�
 Como proteção extra, toda linha passa por um mascaramento que troca por `[REDACTED]` o valor das chaves `cpf`, `employerCnpj`, `salaryCents`, `existingDeductionsCents`, `requestedAmountCents`, `body`, `authorization` e `cookie`, em qualquer nível do objeto. Assim, um objeto com esses campos passado ao logger por engano não vaza os dados. Um erro inesperado é registrado só com o `requestId` e o nome do erro, sem a mensagem, que poderia conter dados da requisição.
 
 Nada é gravado: não há banco de dados, arquivo nem cache, e o front não usa `localStorage`. O CPF, o valor e o prazo vão para os bancos, que precisam deles para cotar; o salário e os descontos não saem da API. Todos os CPFs e CNPJs do projeto, nos exemplos, nos mocks e nos testes, são fictícios.
+
+## Testes
+
+Os testes usam Vitest e não dependem de rede: os bancos são simulados com `nock` nos adaptadores e com adaptadores falsos no serviço, e a API é testada com `supertest` sem subir servidor.
+
+| Pacote | Testes | O que cobrem |
+| --- | --- | --- |
+| `shared` | 131 | CPF e CNPJ por dígito verificador, conversão de reais digitados em centavos (`"1.234,56"` → `123456`, e `"0,10"` + `"0,20"` = `30`), esquemas da requisição e da resposta com as mensagens de erro. |
+| `api` | 154 | Domínio com exemplos de referência fixos: margem de R$ 1.250,00 para salário de R$ 5.000,00 e descontos de R$ 500,00; 24% a.a. vira `0.018088` a.m., e não `0.02`; R$ 10.000,00 em 24 meses dá parcela `51733` e total `1241592`; com margem de R$ 450,00, o valor financiável é `869852`. Adaptadores com `nock` em cada status (sucesso, tempo limite, conexão recusada, 503, corpo que não é JSON e fora do contrato). Serviço com adaptadores falsos (banco lento, exceção inesperada, todos fora do ar, logs sem dados pessoais). Rotas, middlewares, erros, CORS, `x-request-id`, mascaramento do logger e variáveis de ambiente. |
+| `bank-mocks` | 68 | Contrato de cada banco, taxa por faixa de prazo, os quatro cenários do Beta, latência cancelada quando o cliente desiste e logs sem CPF. |
+| `web` | 132 | Máscaras, formatação de reais e percentuais, cliente da API com `fetch` falso, e componentes e tela com Testing Library: validação junto ao campo, carregamento, textos de cada resultado e de cada erro, e navegação só com teclado. |
+
+Os testes ficam ao lado do código (`*.test.ts` e `*.test.tsx`). Para rodar:
+
+```bash
+npm test                                                  # todos os pacotes
+npm test -w @consignado/api                               # um pacote
+npm test -w @consignado/api -- src/domain/loan.test.ts    # um arquivo
+```
+
+Para o modo de observação, que roda de novo a cada mudança, use `npx vitest` dentro da pasta do pacote.
+
+### Verificação antes do merge
+
+O `npm run check` roda lint, tipos, testes e build de todos os pacotes, nessa ordem, e para no primeiro erro. Não há CI: rode-o antes de cada pull request.
+
+O lint também protege a arquitetura. O código de `api/src/domain/` não pode importar `express`, `pino`, `nock`, `undici` nem `supertest`, nem as camadas `infra`, `http` e `services`, nem o `container`, o `app` e o `server`, e também não pode usar `fetch`. Um import desses quebra o `npm run lint`:
+
+```text
+api/src/domain/loan.ts
+  1:1  error  'express' import is restricted from being used. O domínio não depende de infraestrutura  no-restricted-imports
+```
+
+### Roteiro pela tela
+
+Com `npm run dev`, abra http://localhost:5173 e preencha o exemplo de referência: CPF `381.927.465-00`, CNPJ `47.182.936/0001-44`, salário `5.000,00`, descontos `500,00`, valor `10.000,00` e prazo `24`.
+
+| Situação | O que aparece |
+| --- | --- |
+| `BETA_SCENARIO=ok` | Os dois bancos com oferta, e o selo "Menor parcela" no Beta (R$ 507,17). |
+| `slow` (padrão) | "Consultando bancos…" por cerca de 3 s, depois o Alpha com R$ 517,33, o Beta com "O Banco Beta não respondeu a tempo." e o aviso de resultado parcial. |
+| `unavailable` | O Beta com "O Banco Beta está indisponível no momento." |
+| `invalid` | O Beta com "O Banco Beta devolveu uma resposta que não conseguimos ler." |
+| Salário `3.000,00` e descontos `600,00` | "A parcela de R$ 517,33 passa da sua margem disponível de R$ 450,00." e "Com essa margem, você consegue até R$ 8.698,52 em 24 meses." |
+| Descontos `1.050,00`, com o mesmo salário | "Você não tem margem disponível para uma nova parcela." |
+| Bancos simulados parados | "Nenhum banco respondeu agora. Tente novamente em alguns instantes." e o botão "Simular de novo". |
+| API parada | "Não foi possível simular agora. Tente novamente." |
