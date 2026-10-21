@@ -2,27 +2,50 @@ import type { BankResult } from '@consignado/shared';
 import { describe, expect, it } from 'vitest';
 import {
   allFailedResponse,
+  betaInvalidResponse,
+  betaTimeout,
+  betaUnavailable,
   bothSuccessResponse,
+  oneApprovedResponse,
   overMarginResponse,
   referenceResponse,
   zeroMarginResponse,
 } from '../test/responses';
-import { allBanksFailed, lowestInstallmentBankId } from './result';
+import { allBanksFailed, bankOutcome, lowestInstallmentBankId } from './result';
 
-describe('lowestInstallmentBankId', () => {
-  it('escolhe a menor parcela entre as ofertas na margem', () => {
-    expect(lowestInstallmentBankId(bothSuccessResponse.results)).toBe('beta');
-  });
-
-  it('ignora os bancos que falharam', () => {
-    expect(lowestInstallmentBankId(referenceResponse.results)).toBe('alpha');
+describe('bankOutcome', () => {
+  it('aprova a oferta dentro da margem', () => {
+    expect(bankOutcome(referenceResponse.results[0]!)).toBe('approved');
   });
 
   it.each([
     ['margem excedida', overMarginResponse],
     ['margem zero', zeroMarginResponse],
+  ])('reprova a oferta fora da margem (%s)', (_case, response) => {
+    expect(bankOutcome(response.results[0]!)).toBe('rejected');
+  });
+
+  it.each([
+    ['timeout', betaTimeout],
+    ['unavailable', betaUnavailable],
+    ['invalid-response', betaInvalidResponse],
+  ])('trata a falha %s como sem resposta', (_status, result) => {
+    expect(bankOutcome(result)).toBe('no-response');
+  });
+});
+
+describe('lowestInstallmentBankId', () => {
+  it('escolhe a menor parcela entre as ofertas aprovadas', () => {
+    expect(lowestInstallmentBankId(bothSuccessResponse.results)).toBe('beta');
+  });
+
+  it.each([
+    ['uma aprovada e um banco sem resposta', referenceResponse],
+    ['uma aprovada e uma reprovada', oneApprovedResponse],
+    ['margem excedida', overMarginResponse],
+    ['margem zero', zeroMarginResponse],
     ['todos falhando', allFailedResponse],
-  ])('sem oferta na margem (%s), não escolhe nenhum', (_case, response) => {
+  ])('com menos de duas aprovadas (%s), não escolhe nenhum', (_case, response) => {
     expect(lowestInstallmentBankId(response.results)).toBeNull();
   });
 

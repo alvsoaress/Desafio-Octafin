@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   allFailedResponse,
   bothSuccessResponse,
+  oneApprovedResponse,
   overMarginResponse,
   referenceResponse,
   zeroMarginResponse,
@@ -51,16 +52,21 @@ describe('SimulationResult', () => {
 
     expect(screen.queryByText(partialNotice)).not.toBeInTheDocument();
     expect(screen.getAllByText('Menor parcela')).toHaveLength(1);
+    expect(screen.getAllByText('Aprovado')).toHaveLength(2);
     expect(cardOf('Banco Beta').getByText('Menor parcela')).toBeInTheDocument();
   });
 
   it.each([
-    ['margem excedida', overMarginResponse],
-    ['margem zero', zeroMarginResponse],
-  ])('com %s, não mostra o selo', (_case, response) => {
+    ['uma aprovada e um banco sem resposta', referenceResponse, ['Aprovado', 'Sem resposta']],
+    ['uma aprovada e uma reprovada', oneApprovedResponse, ['Reprovado', 'Aprovado']],
+    ['margem excedida', overMarginResponse, ['Reprovado', 'Reprovado']],
+    ['margem zero', zeroMarginResponse, ['Reprovado', 'Reprovado']],
+  ])('com %s, mostra a situação de cada banco e nenhum selo', (_case, response, labels) => {
     renderResult(response);
 
     expect(screen.queryByText('Menor parcela')).not.toBeInTheDocument();
+    expect(cardOf('Banco Alpha').getByText(labels[0]!)).toBeInTheDocument();
+    expect(cardOf('Banco Beta').getByText(labels[1]!)).toBeInTheDocument();
   });
 
   it('sem nenhum banco, mostra o aviso, os cartões de falha e o botão de repetir', async () => {
