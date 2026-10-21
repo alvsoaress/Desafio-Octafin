@@ -423,3 +423,72 @@ Pontos que o desafio deixa em aberto e o que o simulador assume em cada um:
 - **Custo.** A simulação mostra só juros. Não entram CET (custo efetivo total), IOF nem seguro prestamista.
 - **Base da margem.** A margem é de 35% do salário bruto informado. Se a regra fosse sobre o salário líquido, mudaria o rótulo do campo, não a fórmula.
 - **Dados.** Todos os CPFs e CNPJs do projeto são fictícios, gerados com dígitos verificadores válidos.
+
+## Melhorias planejadas
+
+Ficaram fora desta entrega. Cada proposta diz o problema, como seria feita neste código e o que muda no contrato da API.
+
+### Resiliência e experiência
+
+- **Status por banco em tempo real.**
+  - *Problema:* a resposta é única, então a tela mostra um carregamento global e não sabe que o Alpha já respondeu enquanto o Beta ainda está sendo consultado.
+  - *Como:* uma rota de eventos (SSE) em que o `SimulationService` emite o resultado de cada banco assim que ele chega; o front troca o carregamento global por um estado por cartão.
+  - *Contrato:* nova rota de eventos, com um evento por banco no formato atual de `results` e um evento final com `partial`. O `POST /api/simulations` continua igual.
+- **Nova tentativa com recuo.**
+  - *Problema:* uma falha passageira do banco vira `unavailable` na hora.
+  - *Como:* no serviço, repetir só as falhas `unavailable`, com recuo exponencial e um orçamento de tempo que nunca passa do tempo limite total, para não aumentar a espera máxima.
+  - *Contrato:* nada.
+- **Cache de taxas.**
+  - *Problema:* cada simulação consulta todos os bancos, mesmo que a taxa seja a mesma de segundos antes.
+  - *Como:* um cache em memória por banco e prazo, com validade curta, num decorador da porta `BankAdapter`, sem mudar os adaptadores. O CPF não entraria na chave.
+  - *Contrato:* nada.
+- **Circuit breaker por banco.**
+  - *Problema:* um banco fora do ar continua recebendo chamadas e fazendo cada simulação esperar o tempo limite.
+  - *Como:* outro decorador da porta, que depois de várias falhas seguidas responde `unavailable` na hora por um intervalo e depois testa o banco de novo.
+  - *Contrato:* nada.
+
+### Bancos e regras
+
+- **Terceiro banco.**
+  - *Problema:* a entrega tem só dois bancos simulados.
+  - *Como:* o serviço e o domínio não mudam. Basta:
+    1. criar `api/src/infra/banks/<banco>.adapter.ts` com uma classe que implementa a porta `BankAdapter` (`api/src/domain/bank-adapter.ts`): `bankId`, `bankName` e `quote(request, signal)`;
+    2. no `quote`, traduzir a requisição para o formato do banco, chamar o `postJson` (`api/src/infra/http-client.ts`) com o `signal` e converter a resposta com o `toQuoteResult` (`api/src/infra/banks/to-quote-result.ts`), passando uma função que valida o corpo com o esquema Zod do banco e devolve a taxa anual em forma decimal (`0.24` para 24% a.a.), ou `null` quando o corpo está fora do contrato;
+    3. testar com `nock` cada status, como em `alpha.adapter.test.ts`;
+    4. acrescentar a URL do banco em `api/src/config/env.ts` e no `api/.env.example`, e uma linha na lista `adapters` do `api/src/container.ts`.
+  - *Contrato:* nada. O novo banco aparece como mais um item de `results`, e o front já mostra qualquer quantidade de cartões.
+- **Trocar o cenário do Beta sem reiniciar.**
+  - *Problema:* para demonstrar cada falha, é preciso reiniciar os bancos simulados.
+  - *Como:* uma rota `POST /__scenario` só no mock do Beta, nunca exposta pela API.
+  - *Contrato:* nada na API.
+- **CNPJ alfanumérico.**
+  - *Problema:* a Receita passou a emitir CNPJs com letras, que o validador atual recusa.
+  - *Como:* adaptar a normalização e o dígito verificador em `shared/src/documents.ts` e a máscara do front.
+  - *Contrato:* `employerCnpj` passa a aceitar letras.
+- **CET, IOF e seguro.**
+  - *Problema:* a simulação mostra só juros, e o custo real do empréstimo é maior.
+  - *Como:* calcular IOF e tarifas no domínio e o CET a partir do fluxo de pagamentos.
+  - *Contrato:* novos campos em `offer`, como `iofCents` e `cetAnnualRate`.
+
+### Operação e entrega
+
+- **Testes de ponta a ponta no navegador.**
+  - *Problema:* o fluxo completo na tela foi verificado à mão.
+  - *Como:* Playwright com os bancos simulados nos quatro cenários do Beta, cobrindo o roteiro de [Roteiro pela tela](#roteiro-pela-tela).
+  - *Contrato:* nada.
+- **Métricas e traces.**
+  - *Problema:* os logs dizem o que aconteceu numa simulação, mas não mostram tendências, como a taxa de falha de cada banco.
+  - *Como:* OpenTelemetry, com um trace por simulação, um span por banco e métricas de duração e status por banco, que hoje já vão para o log.
+  - *Contrato:* nada.
+- **Autenticação e limite de requisições.**
+  - *Problema:* qualquer cliente pode chamar a API, quantas vezes quiser.
+  - *Como:* autenticação do cliente e limite de requisições por cliente, num middleware antes da rota.
+  - *Contrato:* novo cabeçalho de credencial, e respostas 401 e 429 no formato dos demais erros.
+- **Docker.**
+  - *Problema:* rodar o projeto exige Node 22 instalado.
+  - *Como:* um `Dockerfile` na raiz, em etapas, com um alvo por serviço (API, bancos simulados e front, servido por `nginx`), e um `docker-compose.yml` que sobe tudo nas mesmas portas, com o cenário do Beta escolhido por `BETA_SCENARIO=ok docker compose up`.
+  - *Contrato:* nada.
+- **CI/CD.**
+  - *Problema:* a única barreira antes do merge é rodar o `npm run check` localmente.
+  - *Como:* um workflow do GitHub Actions que roda `npm ci` e `npm run check` em todo pull request e push na `main`. A publicação (CD) depende de escolher onde hospedar a API, os bancos simulados e o front.
+  - *Contrato:* nada.
