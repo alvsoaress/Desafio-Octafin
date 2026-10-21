@@ -381,3 +381,45 @@ Com `npm run dev`, abra http://localhost:5173 e preencha o exemplo de referênci
 | Descontos `1.050,00`, com o mesmo salário | "Você não tem margem disponível para uma nova parcela." |
 | Bancos simulados parados | "Nenhum banco respondeu agora. Tente novamente em alguns instantes." e o botão "Simular de novo". |
 | API parada | "Não foi possível simular agora. Tente novamente." |
+
+## Decisões
+
+### Dinheiro e cálculo
+
+- **Valores em centavos inteiros nas regras e na API; reais só na tela.** Assim nenhum valor passa por ponto flutuante, em que `0.1 + 0.2` não dá `0.3`. Os cálculos usam `decimal.js`.
+- **Taxa mensal composta, `(1 + a)^(1/12) − 1`, arredondada para 6 casas e usada assim no cálculo.** Dividir a taxa anual por 12 superestima a taxa (24% a.a. daria 2% a.m., e não 1,8088%). Usar a taxa arredondada, a mesma que aparece na tela, permite que o cliente refaça a conta e chegue à mesma parcela.
+- **A parcela é arredondada para o centavo mais próximo, e a margem e o valor financiável, sempre para baixo.** O simulador nunca oferece mais margem nem mais crédito do que a regra permite.
+
+### Bancos e falhas
+
+- **Os bancos são consultados em paralelo, cada um isolado e com tempo limite próprio.** Cada consulta roda dentro de um `try/catch` e nunca rejeita, e todas vão juntas num `Promise.all`. O tempo limite é um `AbortSignal.timeout` por banco: o adaptador o repassa ao `fetch`, que é abortado, e o serviço também corre a resposta contra o sinal, para que um adaptador que o ignore não segure a simulação. A espera máxima é o tempo limite, e um banco lento vira resultado parcial.
+- **Sem nova tentativa automática.** Tentar de novo estouraria o tempo de resposta e multiplicaria as chamadas ao banco parceiro.
+- **Falha do banco vira status no adaptador; erro inesperado vira `unavailable` no serviço.** O adaptador traduz cada falha do banco no status correspondente, sem lançar erro. Um defeito no próprio adaptador não é escondido: sobe ao serviço, que o registra no log e responde `unavailable` para aquele banco, sem derrubar a simulação.
+- **Bancos simulados por HTTP real, com contratos diferentes e validação do próprio contrato.** Os adaptadores mostram a tradução de dois formatos distintos (taxa em decimal no Alpha e em percentual no Beta), e um adaptador que traduza errado recebe HTTP 400, como receberia de um banco real.
+- **O cenário do Beta é fixado por variável de ambiente.** O mesmo cenário sempre produz o mesmo resultado, na demonstração e nos testes. Trocar exige reiniciar os bancos simulados.
+
+### API, segurança e logs
+
+- **Sem banco de dados.** O fluxo não precisa de persistência, e não guardar CPF nem salário reduz o risco de vazamento (LGPD).
+- **Mascaramento recursivo nos logs.** Uma função pura percorre cada linha de log em qualquer profundidade e troca os campos sensíveis por `[REDACTED]`. O `redact` nativo do `pino` cobre só os caminhos listados.
+
+### Front
+
+- **Sem bibliotecas de estilo, de componentes, de formulário nem de máscara.** São seis campos: CSS puro com variáveis e estado com `useState` bastam. As máscaras e a formatação de reais e percentuais são funções puras em aritmética inteira, testadas sem React, e o valor digitado nunca passa por `number` com casas decimais.
+- **O cliente da API é injetável e valida a resposta pelo contrato.** A tela é testada com um cliente falso, sem rede, e uma resposta fora do contrato vira a mensagem de erro, em vez de quebrar a renderização.
+
+### Projeto
+
+- **npm workspaces com um pacote `shared` sem build.** Os esquemas Zod da requisição e da resposta ficam no `shared` e são usados pelo front e pela API, com os tipos inferidos deles, então validação e contrato não divergem. O pacote exporta TypeScript direto, porque todo consumidor já o entende.
+- **A regra de camadas é verificada pelo ESLint.** O domínio não pode importar infraestrutura, e a arquitetura não depende de revisão manual (veja [Verificação antes do merge](#verificação-antes-do-merge)).
+- **Docker e CI/CD ficaram fora desta entrega.** A prioridade foram as funcionalidades e a documentação. O `npm run dev` já sobe tudo num checkout limpo, e o `npm run check` local faz o papel do CI. As propostas estão em [Melhorias planejadas](#melhorias-planejadas).
+
+## Premissas
+
+Pontos que o desafio deixa em aberto e o que o simulador assume em cada um:
+
+- **CNPJ do empregador.** É obrigatório e validado por dígito verificador, mas não é enviado aos bancos, que cotam só com CPF, valor e prazo. Só o CNPJ numérico é aceito; o alfanumérico da Receita fica como melhoria.
+- **Limites.** O prazo vai de 6 a 96 meses, o valor desejado de R$ 500,00 a R$ 500.000,00 e o salário até R$ 1.000.000,00. São limites iniciais, definidos como constantes em `shared/src/simulation-request.ts` (as mensagens de erro, em `shared/src/messages.ts`, citam os mesmos valores e mudam junto).
+- **Custo.** A simulação mostra só juros. Não entram CET (custo efetivo total), IOF nem seguro prestamista.
+- **Base da margem.** A margem é de 35% do salário bruto informado. Se a regra fosse sobre o salário líquido, mudaria o rótulo do campo, não a fórmula.
+- **Dados.** Todos os CPFs e CNPJs do projeto são fictícios, gerados com dígitos verificadores válidos.
