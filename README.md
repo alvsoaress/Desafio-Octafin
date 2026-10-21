@@ -89,9 +89,10 @@ Para produção: `npm run build`, depois `npm start -w @consignado/api`, `npm st
 - **Contrato da resposta com regras de consistência.** Além dos tipos, o esquema recusa números incoerentes (total diferente de parcela × prazo, margem disponível acima da consignável, banco repetido). O front recusa uma resposta assim, e os testes da API quebram se o cálculo produzir uma.
 - **Recusa do banco separada de falha técnica.** Cada adaptador traduz a recusa do seu banco para o status `rejected` com um motivo canônico (`amount-above-limit`, `employer-not-covered` ou `other`). Um 4xx ou 5xx que o adaptador não reconhece continua `unavailable`, então uma queda nunca aparece para o cliente como "Reprovado".
 - **Bancos simulados por HTTP real**, com cenários determinísticos, para que a demonstração e os testes mostrem as falhas sempre do mesmo jeito.
-- **Nome e e-mail validados, mas fora da consulta aos bancos.** A API exige nome completo e um e-mail válido, mas envia a cada banco só CPF, valor e prazo, o mínimo para a cotação. Os dois campos também passam pelo mascaramento de logs.
+- **Cada banco recebe só o que precisa.** O Alpha recebe CPF, valor e prazo; o Beta recebe também o CNPJ, que usa para conferir o convênio. Nome, e-mail, salário e descontos nunca saem da API.
+- **Nome e e-mail com finalidade declarada.** Identificam quem pediu a simulação e são o contato para a etapa de contratação, que fica fora deste MVP. Por isso são validados, mas não são guardados, não vão para os bancos e passam pelo mascaramento de logs.
 - **Sem banco de dados.** O fluxo não precisa de persistência, e não guardar CPF nem salário reduz o risco de vazamento (LGPD).
-- **Front sem bibliotecas de estilo, componentes, formulário ou máscara.** São seis campos; máscaras e formatação são funções puras em aritmética inteira, testadas sem React.
+- **Front sem bibliotecas de estilo, componentes, formulário ou máscara.** São oito campos; máscaras e formatação são funções puras em aritmética inteira, testadas sem React.
 
 ## Limitações
 
@@ -108,80 +109,84 @@ Para produção: `npm run build`, depois `npm start -w @consignado/api`, `npm st
 
 ## Melhorias e proposições
 
-Cada proposta diz o problema, o que muda e o ganho para o cliente ou para o serviço. As marcadas como **feita** já estão no código; as **planejadas** ficaram fora desta entrega.
+Cada proposta segue o formato **Problema**, **Proposta** e **Por quê**. As implementadas já estão no código; as planejadas ficaram fora desta entrega e estão em ordem de prioridade.
 
-### Para o cliente
+### Implementadas
 
-- **Tela sempre recuperável** (planejada).
-  - *Problema:* uma falha inesperada no cliente da API pode deixar a tela presa em "Consultando bancos…", e erros de validação antigos continuam visíveis numa nova tentativa.
-  - *Proposta:* tratar toda falha como erro com nova tentativa, limpar os erros antigos ao reenviar e descartar respostas de simulações já substituídas.
-  - *Ganho:* o cliente nunca fica sem saída nem vê dados de uma simulação anterior.
-- **Status por banco em tempo real** (planejada).
-  - *Problema:* o carregamento é global, mesmo quando um banco já respondeu.
-  - *Proposta:* uma rota de eventos (SSE) que envia o resultado de cada banco assim que ele chega, com carregamento por cartão.
-  - *Ganho:* o cliente vê a primeira oferta em centenas de milissegundos, sem esperar o banco mais lento.
-- **Recusa pelo próprio banco** (feita).
-  - *Problema:* "Reprovado" vinha só da margem, e o banco não tinha como recusar por política própria.
-  - *Proposta:* cada adaptador traduz a recusa do seu banco para o status `rejected` com um motivo, e o cartão mostra o motivo em português. A recusa não se confunde com falha técnica e não deixa o resultado parcial.
-  - *Ganho:* o cliente entende por que um banco recusou e sabe que tentar de novo não muda a resposta.
-- **Custo real** (planejada).
-  - *Problema:* a simulação mostra só juros.
-  - *Proposta:* calcular IOF, tarifas e CET no domínio.
-  - *Ganho:* o cliente compara pelo custo total.
-- **CNPJ alfanumérico** (planejada).
-  - *Problema:* o novo formato da Receita é recusado.
-  - *Proposta:* adaptar a validação e a máscara.
-  - *Ganho:* clientes de empresas novas conseguem simular.
+1. **Resultado de cada banco, mesmo quando algum falha**
+   - *Problema:* a empresa depende de bancos que não controla. Se um demora ou cai, a simulação inteira não pode travar nem falhar junto.
+   - *Proposta:* consulta paralela com tempo limite de 3 s por banco, que aborta a requisição de verdade. Cada falha vira um status daquele banco (`timeout`, `unavailable` ou `invalid-response`), a resposta indica `partial: true` e a tela avisa que alguns bancos não responderam.
+   - *Por quê:* o cliente espera no máximo o tempo limite e vê as ofertas que chegaram, em vez de uma tela de erro por causa de um parceiro.
+2. **Recusa do banco separada de falha técnica**
+   - *Problema:* "o banco recusou" e "o banco não respondeu" pedem ações opostas do cliente, e cada banco avisa a recusa de um jeito.
+   - *Proposta:* cada adaptador traduz a recusa do seu banco (HTTP 200 com `decision` no Alpha, HTTP 422 com código no Beta) para o status `rejected` com um motivo, mostrado em português no cartão. Um código desconhecido continua sendo recusa, e um erro HTTP desconhecido continua `unavailable`.
+   - *Por quê:* o cliente sabe que tentar de novo não muda uma recusa, mas pode mudar uma falha. Uma queda do parceiro nunca aparece como "Reprovado".
+3. **Resultado que ajuda a decidir**
+   - *Problema:* uma parcela que não cabe na margem só diz "não", e com várias ofertas o cliente precisa comparar sozinho.
+   - *Proposta:* quando a parcela passa da margem, o cartão mostra o valor máximo que cabe no mesmo prazo. Com duas ou mais ofertas aprovadas, a de menor parcela ganha um selo.
+   - *Por quê:* o cliente sai da simulação com um próximo passo, em vez de recomeçar no escuro.
+4. **Dados pessoais mínimos e fora dos logs**
+   - *Problema:* um simulador de crédito recebe CPF, salário e contato, e logs costumam vazar esses dados.
+   - *Proposta:* nada é gravado. Cada banco recebe só o que usa, e toda linha de log passa por um mascaramento recursivo que troca nome, e-mail, CPF, CNPJ, valores, corpo e credenciais por `[REDACTED]`.
+   - *Por quê:* menos exposição em caso de vazamento e aderência aos princípios de finalidade e necessidade da LGPD.
+5. **Superfície da API reduzida**
+   - *Problema:* uma API aberta aceita qualquer origem e qualquer corpo, e mensagens de erro detalhadas expõem a parte interna.
+   - *Proposta:* CORS só para a origem configurada, corpo limitado a 10 KB, campos fora do contrato recusados, URLs dos bancos só da configuração e erro 500 sem detalhes internos.
+   - *Por quê:* menos vetores de abuso e de vazamento de informação interna.
+6. **Validação compartilhada e contrato com regras de consistência**
+   - *Problema:* regras duplicadas entre front e API divergem com o tempo, e um esquema que só confere tipos aceita respostas impossíveis.
+   - *Proposta:* um único esquema Zod no `shared`, usado pelo front e pela API, que também recusa números incoerentes, como um total diferente de parcela × prazo.
+   - *Por quê:* o cliente vê a mesma mensagem nos dois lados, e um erro de cálculo quebra o teste antes de chegar à tela.
+7. **Rastreabilidade por requisição**
+   - *Problema:* sem identificador, um erro relatado pelo cliente não é encontrado nos logs.
+   - *Proposta:* todo pedido recebe um `x-request-id`, devolvido ao cliente, mostrado na tela quando a simulação falha e presente em cada linha de log, com status e duração por banco.
+   - *Por quê:* o suporte localiza a simulação pelo código que o cliente informa.
+8. **Arquitetura verificada pelo lint**
+   - *Problema:* a regra de que o domínio não depende de infraestrutura só valeria enquanto alguém lembrasse dela na revisão.
+   - *Proposta:* o ESLint barra imports de Express, `fetch` e infraestrutura no domínio, e o `npm run check` reúne lint, tipos, testes e build num comando só.
+   - *Por quê:* uma violação de camada no domínio quebra a verificação local antes de chegar à `main`.
 
-### Segurança e privacidade
+### Planejadas, em ordem de prioridade
 
-- **Dados pessoais fora dos logs e sem persistência** (feita).
-  - *Problema:* logs costumam vazar CPF e salário.
-  - *Proposta:* nada é gravado, e toda linha de log passa por um mascaramento recursivo que troca nome, e-mail, CPF, CNPJ, valores, corpo e credenciais por `[REDACTED]`. O nome, o e-mail, o salário e os descontos nunca saem da API.
-  - *Ganho:* menor exposição a vazamentos e aderência à LGPD.
-- **Superfície da API reduzida** (feita).
-  - *Problema:* uma API aberta aceita qualquer origem e qualquer corpo.
-  - *Proposta:* CORS só para a origem configurada, corpo limitado a 10 KB, campos fora do contrato recusados, URLs dos bancos só da configuração e erro 500 sem detalhes internos.
-  - *Ganho:* menos vetores de abuso e de vazamento de informação interna.
-- **Autenticação e limite de requisições** (planejada).
-  - *Problema:* qualquer cliente pode chamar a API quantas vezes quiser.
-  - *Proposta:* um middleware de autenticação e limite por cliente antes da rota, com respostas 401 e 429 no formato dos demais erros.
-  - *Ganho:* protege a API e os bancos parceiros de uso abusivo.
+O critério é atacar primeiro o que o cliente sente hoje, depois o que dá visibilidade e proteção contra os bancos, e por fim o que amplia o produto.
 
-### Qualidade
-
-- **Validação compartilhada e contrato consistente** (feitas).
-  - *Problema:* regras duplicadas entre front e API divergem com o tempo, e um esquema que só confere tipos aceita respostas impossíveis.
-  - *Proposta:* um único esquema Zod no `shared`, com regras de consistência da resposta, usado pelo front e pelos testes da API.
-  - *Ganho:* um erro de cálculo quebra o teste antes de chegar à tela.
-- **Arquitetura verificada pelo lint** (feita no domínio; planejada para as demais camadas).
-  - *Problema:* a regra de camadas depende de revisão manual.
-  - *Proposta:* o ESLint já barra infraestrutura no domínio; a proposta estende a verificação a todas as camadas, detecta ciclos de importação e move as interfaces de log e de simulação para portas neutras.
-  - *Ganho:* a arquitetura não se degrada a cada mudança.
-- **Testes mais fortes** (planejados).
-  - *Problema:* exemplos fixos não provam que as fórmulas valem para qualquer entrada, e os testes dos adaptadores se repetem.
-  - *Proposta:* testes de propriedade nas fórmulas (parcela cresce com valor e taxa, juros nunca negativos, valor financiável sempre cabe na margem), uma suíte de contrato que todo adaptador de banco precisa passar e mutation testing (Stryker) nos módulos financeiros, com meta de 80%.
-  - *Ganho:* mais confiança nos cálculos e um banco novo testado da mesma forma que os existentes.
-- **Testes de ponta a ponta no navegador** (planejado).
-  - *Problema:* o fluxo completo na tela foi verificado à mão.
-  - *Proposta:* Playwright com os quatro cenários do Beta.
-  - *Ganho:* regressões visuais e de fluxo aparecem antes do merge.
-
-### Infraestrutura e operação
-
-- **Rastreabilidade por requisição** (feita).
-  - *Problema:* sem identificador, um erro relatado pelo cliente não é encontrado nos logs.
-  - *Proposta:* todo pedido recebe um `x-request-id`, devolvido ao cliente e presente em cada linha de log, com status e duração por banco.
-  - *Ganho:* o suporte localiza qualquer simulação pelo código mostrado na tela.
-- **Cancelamento quando o cliente desiste** (planejado).
-  - *Problema:* se o cliente fecha a página, a API continua esperando os bancos.
-  - *Proposta:* propagar o fechamento da conexão até os adaptadores, abortando as consultas, e isolar a falha de cálculo de um banco para não derrubar os outros.
-  - *Ganho:* menos carga desperdiçada nos bancos parceiros e simulações mais resilientes.
-- **Nova tentativa, cache e circuit breaker** (planejados).
-  - *Problema:* uma falha passageira vira `unavailable`, cada simulação consulta todos os bancos e um banco fora do ar faz toda simulação esperar o tempo limite.
-  - *Proposta:* decoradores da porta `BankAdapter`, sem mudar os adaptadores: nova tentativa com recuo dentro do tempo limite, cache curto de taxas por banco e prazo (sem CPF na chave) e circuit breaker que responde `unavailable` na hora depois de falhas seguidas.
-  - *Ganho:* respostas mais rápidas e estáveis, com menos carga nos parceiros.
-- **CI, Docker e observabilidade** (planejados).
-  - *Problema:* a verificação antes do merge é manual, rodar o projeto exige Node 22 e os logs não mostram tendências.
-  - *Proposta:* GitHub Actions com `npm run check` em todo pull request e a `main` protegida pelo check; `docker compose up` subindo os três serviços; OpenTelemetry com um trace por simulação e métricas por banco.
-  - *Ganho:* nenhum código quebrado chega à `main`, qualquer pessoa sobe o projeto com um comando e a operação enxerga a taxa de falha de cada banco.
+1. **Tela sempre recuperável**
+   - *Problema:* erros de validação antigos continuam na tela numa nova tentativa, uma falha inesperada no cliente da API pode deixar a tela presa em "Consultando bancos…", e uma oferta incoerente de um banco faz a tela recusar a resposta inteira.
+   - *Proposta:* limpar os erros ao reenviar, tratar toda falha como erro com nova tentativa, descartar respostas de simulações já substituídas e validar a resposta banco a banco, rebaixando só o banco incoerente para "Sem resposta".
+   - *Por quê:* vem primeiro porque é um defeito que o cliente já encontra, e a correção é pequena.
+2. **Visibilidade por banco**
+   - *Problema:* o log registra o status de cada banco, mas não o código HTTP que ele devolveu nem o motivo da recusa. Um 400 (erro nosso) e um 503 (queda do parceiro) parecem iguais.
+   - *Proposta:* registrar o código HTTP e o motivo da recusa em cada consulta, e expor métricas e traces por banco com OpenTelemetry: taxa de falha, de recusa e latência.
+   - *Por quê:* a operação descobre um parceiro instável antes do cliente reclamar, e os números calibram a proposta seguinte.
+3. **Proteção contra banco instável**
+   - *Problema:* um banco fora do ar faz toda simulação esperar o tempo limite, uma falha passageira vira `unavailable`, e a API continua esperando os bancos mesmo quando o cliente fecha a página.
+   - *Proposta:* decoradores da porta `BankAdapter`, sem mudar os adaptadores: circuit breaker que responde `unavailable` na hora depois de falhas seguidas, nova tentativa com recuo dentro do tempo limite e cache curto de taxas por banco e prazo, sem CPF na chave. O fechamento da conexão também aborta as consultas em andamento.
+   - *Por quê:* respostas mais rápidas quando um parceiro cai e menos carga desperdiçada nos bancos. Depende da visibilidade do item 2 para calibrar os limites.
+4. **CNPJ alfanumérico**
+   - *Problema:* desde julho de 2026, a Receita emite CNPJs com letras para inscrições novas, e a validação atual só aceita números.
+   - *Proposta:* adaptar a validação, a normalização e a máscara ao novo formato.
+   - *Por quê:* hoje quem trabalha numa empresa aberta recentemente não consegue simular.
+5. **Resultado de cada banco em tempo real**
+   - *Problema:* o carregamento é global e dura até o banco mais lento responder.
+   - *Proposta:* uma rota de eventos (SSE) que envia o resultado de cada banco assim que ele chega, com carregamento por cartão.
+   - *Por quê:* o cliente vê a primeira oferta em centenas de milissegundos, sem esperar o banco mais lento.
+6. **Custo real do empréstimo**
+   - *Problema:* a simulação mostra só juros, então o custo real é maior que o exibido.
+   - *Proposta:* calcular IOF, tarifas e CET no domínio e informar o valor máximo aceito quando o banco recusa por teto.
+   - *Por quê:* o cliente compara as ofertas pelo custo total, que é o que ele de fato paga.
+7. **Autenticação e limite de requisições**
+   - *Problema:* qualquer cliente pode chamar a API quantas vezes quiser, e cada chamada consulta todos os bancos.
+   - *Proposta:* um middleware de autenticação e de limite por cliente antes da rota, com respostas 401 e 429 no formato dos demais erros.
+   - *Por quê:* protege a API e os bancos parceiros de uso abusivo. Fica atrás das anteriores porque o MVP ainda não está publicado.
+8. **Resultado por e-mail, com consentimento**
+   - *Problema:* o cliente perde a simulação ao fechar a página, e o e-mail coletado ainda não é usado.
+   - *Proposta:* com o consentimento explícito do cliente, enviar um resumo das ofertas para o e-mail informado, sem CPF nem salário no corpo.
+   - *Por quê:* o cliente retoma a decisão depois, e o e-mail passa a ter um uso concreto e autorizado.
+9. **Testes mais fortes**
+   - *Problema:* exemplos fixos não provam que as fórmulas valem para qualquer entrada, os testes dos adaptadores se repetem e o fluxo completo na tela foi verificado à mão.
+   - *Proposta:* testes de propriedade nas fórmulas, uma suíte de contrato que todo adaptador de banco precisa passar, mutation testing (Stryker) nos módulos financeiros e Playwright com os cenários do Beta.
+   - *Por quê:* mais confiança nos cálculos, e um banco novo testado da mesma forma que os existentes.
+10. **CI, Docker e publicação**
+    - *Problema:* a verificação antes do merge depende de rodar o `npm run check` à mão, rodar o projeto exige Node 22 e nada é publicado.
+    - *Proposta:* GitHub Actions com `npm run check` em todo pull request e a `main` protegida pelo check, `docker compose up` subindo os três serviços, CD a partir da `main` e verificação de camadas no lint estendida a todo o código.
+    - *Por quê:* nenhum código quebrado chega à `main`, qualquer pessoa sobe o projeto com um comando e cada merge chega a um ambiente de demonstração.
