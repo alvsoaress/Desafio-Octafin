@@ -9,6 +9,7 @@ Simula um empréstimo consignado em vários bancos ao mesmo tempo e mostra a ofe
 - **Margem consignável**: 35% do salário menos os descontos existentes. Quando a parcela não cabe, o simulador mostra a parcela máxima e quanto o cliente consegue financiar.
 - **Cálculo pela tabela Price**, com a taxa anual do banco convertida em mensal composta, valores em centavos e aritmética decimal.
 - **Consulta paralela aos bancos**, com tempo limite por banco. Um banco lento, fora do ar ou com resposta inválida não derruba a simulação: as demais ofertas aparecem, junto com o motivo da falha daquele banco.
+- **Situação de cada banco**: cada cartão diz "Aprovado" (a parcela cabe na margem disponível), "Reprovado" (não cabe) ou "Sem resposta" (o banco falhou). O banco informa só a taxa, e quem decide se a parcela cabe é a margem calculada pela API. Uma falha técnica não é reprovação, porque o banco não chegou a avaliar o pedido. O selo "Menor parcela" aparece só quando há duas ou mais ofertas aprovadas para comparar.
 - **Privacidade**: nada é gravado, e CPF, CNPJ e valores não aparecem nos logs.
 
 ## Termos
@@ -86,7 +87,7 @@ Uma variável passada na linha de comando tem precedência sobre o `.env`.
 | `LOG_LEVEL` | api | `info` | Nível do log: `fatal`, `error`, `warn`, `info`, `debug`, `trace` ou `silent`. |
 | `ALPHA_PORT` | bank-mocks | `4001` | Porta do Banco Alpha. |
 | `BETA_PORT` | bank-mocks | `4002` | Porta do Banco Beta. |
-| `BETA_SCENARIO` | bank-mocks | `slow` | Cenário do Banco Beta (veja [Bancos simulados](#bancos-simulados)). |
+| `BETA_SCENARIO` | bank-mocks | `ok` | Cenário do Banco Beta (veja [Bancos simulados](#bancos-simulados)). |
 | `VITE_API_URL` | web | `http://localhost:3000` | URL da API usada pelo front. |
 
 As URLs da API não têm padrão no código, para que uma configuração esquecida não aponte em silêncio para outro lugar. A API e os bancos simulados validam as variáveis na subida e, se alguma faltar ou for inválida, encerram com uma mensagem que a nomeia:
@@ -145,7 +146,7 @@ Campo ausente recebe "Campo obrigatório.", e tipo errado (texto no lugar de nú
 
 ### Resposta
 
-Com os serviços no ar (`npm run dev`, com o Beta no cenário padrão `slow`):
+Com os serviços no ar e o Beta no cenário `slow` (`BETA_SCENARIO=slow npm run dev`), para mostrar também um banco com falha:
 
 ```bash
 curl -s -X POST localhost:3000/api/simulations \
@@ -277,21 +278,21 @@ O Beta se comporta conforme a variável `BETA_SCENARIO`, sempre do mesmo jeito e
 
 | Cenário | Comportamento | Status esperado na API |
 | --- | --- | --- |
-| `ok` | Responde em cerca de 150 ms com taxa de 21,50% a.a. | `success` |
-| `slow` (padrão) | Responde a mesma oferta depois de 10 s, acima do tempo limite da API. | `timeout` |
+| `ok` (padrão) | Responde em cerca de 150 ms com taxa de 21,50% a.a. | `success` |
+| `slow` | Responde a mesma oferta depois de 10 s, acima do tempo limite da API. | `timeout` |
 | `unavailable` | Responde HTTP 503 a qualquer requisição. | `unavailable` |
 | `invalid` | Responde HTTP 200 sem o campo da taxa. | `invalid-response` |
 
 Para trocar o cenário, reinicie com a variável. Na raiz, ela vale para o `npm run dev` inteiro:
 
 ```bash
-BETA_SCENARIO=ok npm run dev
+BETA_SCENARIO=slow npm run dev
 ```
 
 Para reiniciar só os bancos simulados, deixando a API e o front no ar:
 
 ```bash
-BETA_SCENARIO=ok npm run dev -w @consignado/bank-mocks
+BETA_SCENARIO=slow npm run dev -w @consignado/bank-mocks
 ```
 
 Também dá para definir `BETA_SCENARIO` no `bank-mocks/.env`. Um valor desconhecido impede a subida, com uma mensagem que lista os cenários aceitos.
@@ -344,7 +345,7 @@ Os testes usam Vitest e não dependem de rede: os bancos são simulados com `noc
 | `shared` | 131 | CPF e CNPJ por dígito verificador, conversão de reais digitados em centavos (`"1.234,56"` → `123456`, e `"0,10"` + `"0,20"` = `30`), esquemas da requisição e da resposta com as mensagens de erro. |
 | `api` | 154 | Domínio com exemplos de referência fixos: margem de R$ 1.250,00 para salário de R$ 5.000,00 e descontos de R$ 500,00; 24% a.a. vira `0.018088` a.m., e não `0.02`; R$ 10.000,00 em 24 meses dá parcela `51733` e total `1241592`; com margem de R$ 450,00, o valor financiável é `869852`. Adaptadores com `nock` em cada status (sucesso, tempo limite, conexão recusada, 503, corpo que não é JSON e fora do contrato). Serviço com adaptadores falsos (banco lento, exceção inesperada, todos fora do ar, logs sem dados pessoais). Rotas, middlewares, erros, CORS, `x-request-id`, mascaramento do logger e variáveis de ambiente. |
 | `bank-mocks` | 68 | Contrato de cada banco, taxa por faixa de prazo, os quatro cenários do Beta, latência cancelada quando o cliente desiste e logs sem CPF. |
-| `web` | 132 | Máscaras, formatação de reais e percentuais, cliente da API com `fetch` falso, e componentes e tela com Testing Library: validação junto ao campo, carregamento, textos de cada resultado e de cada erro, e navegação só com teclado. |
+| `web` | 147 | Máscaras, formatação de reais e percentuais, situação de cada banco e regra do selo, cliente da API com `fetch` falso, e componentes e tela com Testing Library: validação junto ao campo, carregamento, textos e rótulos de cada resultado e de cada erro, e navegação só com teclado. |
 
 Os testes ficam ao lado do código (`*.test.ts` e `*.test.tsx`). Para rodar:
 
@@ -373,12 +374,12 @@ Com `npm run dev`, abra http://localhost:5173 e preencha o exemplo de referênci
 
 | Situação | O que aparece |
 | --- | --- |
-| `BETA_SCENARIO=ok` | Os dois bancos com oferta, e o selo "Menor parcela" no Beta (R$ 507,17). |
-| `slow` (padrão) | "Consultando bancos…" por cerca de 3 s, depois o Alpha com R$ 517,33, o Beta com "O Banco Beta não respondeu a tempo." e o aviso de resultado parcial. |
-| `unavailable` | O Beta com "O Banco Beta está indisponível no momento." |
-| `invalid` | O Beta com "O Banco Beta devolveu uma resposta que não conseguimos ler." |
-| Salário `3.000,00` e descontos `600,00` | "A parcela de R$ 517,33 passa da sua margem disponível de R$ 450,00." e "Com essa margem, você consegue até R$ 8.698,52 em 24 meses." |
-| Descontos `1.050,00`, com o mesmo salário | "Você não tem margem disponível para uma nova parcela." |
+| `ok` (padrão) | Os dois bancos "Aprovado", com o Alpha em R$ 517,33 e o selo "Menor parcela" no Beta (R$ 507,17). |
+| `BETA_SCENARIO=slow` | "Consultando bancos…" por cerca de 3 s, depois o Alpha "Aprovado" com R$ 517,33 e sem selo, o Beta "Sem resposta" com "O Banco Beta não respondeu a tempo." e o aviso de resultado parcial. |
+| `BETA_SCENARIO=unavailable` | O Beta "Sem resposta" com "O Banco Beta está indisponível no momento." |
+| `BETA_SCENARIO=invalid` | O Beta "Sem resposta" com "O Banco Beta devolveu uma resposta que não conseguimos ler." |
+| Salário `3.000,00` e descontos `600,00` | Os dois bancos "Reprovado", sem selo. No Alpha, "A parcela de R$ 517,33 passa da sua margem disponível de R$ 450,00." e "Com essa margem, você consegue até R$ 8.698,52 em 24 meses." |
+| Descontos `1.050,00`, com o mesmo salário | Os dois bancos "Reprovado" e "Você não tem margem disponível para uma nova parcela." |
 | Bancos simulados parados | "Nenhum banco respondeu agora. Tente novamente em alguns instantes." e o botão "Simular de novo". |
 | API parada | "Não foi possível simular agora. Tente novamente." |
 
@@ -406,6 +407,8 @@ Com `npm run dev`, abra http://localhost:5173 e preencha o exemplo de referênci
 ### Front
 
 - **Sem bibliotecas de estilo, de componentes, de formulário nem de máscara.** São seis campos: CSS puro com variáveis e estado com `useState` bastam. As máscaras e a formatação de reais e percentuais são funções puras em aritmética inteira, testadas sem React, e o valor digitado nunca passa por `number` com casas decimais.
+- **A situação de cada banco é derivada da resposta, sem status novo no contrato.** "Aprovado" e "Reprovado" saem de `status` e `withinMargin`, que a API já devolve, e uma falha técnica fica como "Sem resposta", porque o banco não avaliou o pedido.
+- **O selo "Menor parcela" só aparece com duas ou mais ofertas aprovadas.** Com uma oferta só, "menor" não compara nada e vira destaque sem motivo.
 - **O cliente da API é injetável e valida a resposta pelo contrato.** A tela é testada com um cliente falso, sem rede, e uma resposta fora do contrato vira a mensagem de erro, em vez de quebrar a renderização.
 
 ### Projeto
@@ -457,6 +460,10 @@ Ficaram fora desta entrega. Cada proposta diz o problema, como seria feita neste
     3. testar com `nock` cada status, como em `alpha.adapter.test.ts`;
     4. acrescentar a URL do banco em `api/src/config/env.ts` e no `api/.env.example`, e uma linha na lista `adapters` do `api/src/container.ts`.
   - *Contrato:* nada. O novo banco aparece como mais um item de `results`, e o front já mostra qualquer quantidade de cartões.
+- **Recusa decidida pelo banco.**
+  - *Problema:* hoje o banco informa só a taxa, e "Reprovado" quer dizer apenas que a parcela não cabe na margem. Um banco real também recusa por política própria, como idade, convênio ou restrição de crédito.
+  - *Como:* um status `rejected` no resultado do adaptador, produzido pelo `toQuoteResult` quando o banco devolve uma recusa no próprio contrato, e um cenário `rejected` no mock do Beta. O front mostra "Reprovado" com o motivo informado pelo banco.
+  - *Contrato:* `status` ganha o valor `rejected`, com `error.code` igual a `rejected` e uma mensagem própria.
 - **Trocar o cenário do Beta sem reiniciar.**
   - *Problema:* para demonstrar cada falha, é preciso reiniciar os bancos simulados.
   - *Como:* uma rota `POST /__scenario` só no mock do Beta, nunca exposta pela API.
