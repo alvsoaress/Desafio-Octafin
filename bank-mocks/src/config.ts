@@ -24,7 +24,7 @@ const envSchema = z.object({
   BETA_PORT: portField(4002),
   BETA_SCENARIO: z
     .enum(BETA_SCENARIOS, { error: `use um destes valores: ${BETA_SCENARIOS.join(', ')}` })
-    .default('slow'),
+    .default('ok'),
 });
 
 export function loadConfig(env: Record<string, string | undefined>): MocksConfig {
