@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { z } from 'zod';
 import {
   bankResultSchema,
   offerSchema,
@@ -33,6 +34,68 @@ const referenceResponse = {
   ],
 };
 
+const betaOffer = {
+  annualRate: '0.215000',
+  monthlyRate: '0.016361',
+  installmentCents: 50717,
+  totalCents: 1217208,
+  totalInterestCents: 217208,
+  withinMargin: true,
+  maxInstallmentCents: 125000,
+  maxFinanceableCents: null,
+};
+
+const alphaSuccess = referenceResponse.results[0]!;
+const betaSuccess = {
+  bankId: 'beta',
+  bankName: 'Banco Beta',
+  status: 'success',
+  offer: betaOffer,
+};
+
+const overMarginResponse = {
+  ...referenceResponse,
+  partial: false,
+  margin: { consignableCents: 105000, availableCents: 45000 },
+  results: [
+    {
+      ...alphaSuccess,
+      offer: {
+        ...alphaOffer,
+        withinMargin: false,
+        maxInstallmentCents: 45000,
+        maxFinanceableCents: 869852,
+      },
+    },
+  ],
+};
+
+function issuePaths(schema: z.ZodType, value: unknown) {
+  const result = schema.safeParse(value);
+
+  return result.success ? [] : result.error.issues.map((issue) => issue.path);
+}
+
+function withAlphaOffer(offer: object) {
+  return {
+    ...referenceResponse,
+    partial: false,
+    results: [{ ...alphaSuccess, offer: { ...alphaOffer, ...offer } }],
+  };
+}
+
+function withRequest(requestedAmountCents: number, termMonths: number) {
+  const totalCents = alphaOffer.installmentCents * termMonths;
+
+  return {
+    ...withAlphaOffer({
+      totalCents,
+      totalInterestCents: Math.max(0, totalCents - requestedAmountCents),
+    }),
+    request: { requestedAmountCents, termMonths },
+  };
+}
+
 describe('rateSchema', () => {
   it.each(['0.240000', '0.018088', '0.000000'])('aceita %s', (rate) => {
     expect(rateSchema.safeParse(rate).success).toBe(true);
@@ -66,8 +129,34 @@ describe('offerSchema', () => {
   });
 
   it('recusa oferta fora da margem sem maxFinanceableCents', () => {
-    expect(offerSchema.safeParse({ ...alphaOffer, withinMargin: false }).success).toBe(false);
+    const offer = { ...alphaOffer, withinMargin: false, maxInstallmentCents: 45000 };
+
+    expect(issuePaths(offerSchema, offer)).toEqual([['maxFinanceableCents']]);
   });
+
+  it('aceita oferta dentro da margem com a parcela igual à parcela máxima', () => {
+    expect(offerSchema.safeParse({ ...alphaOffer, maxInstallmentCents: 51733 }).success).toBe(true);
+  });
+
+  it('recusa withinMargin verdadeiro com a parcela acima da parcela máxima', () => {
+    expect(issuePaths(offerSchema, { ...alphaOffer, maxInstallmentCents: 51732 })).toEqual([
+      ['withinMargin'],
+    ]);
+  });
+
+  it.each([125000, 51733])(
+    'recusa withinMargin falso com a parcela cabendo na parcela máxima de %i',
+    (maxInstallmentCents) => {
+      const offer = {
+        ...alphaOffer,
+        withinMargin: false,
+        maxInstallmentCents,
+        maxFinanceableCents: 869852,
+      };
+
+      expect(issuePaths(offerSchema, offer)).toEqual([['withinMargin']]);
+    },
+  );
 
   it('recusa centavos não inteiros', () => {
     expect(offerSchema.safeParse({ ...alphaOffer, installmentCents: 517.33 }).success).toBe(false);
@@ -166,5 +255,139 @@ describe('simulationResponseSchema', () => {
     const response = { ...referenceResponse, partial: false, results: [] };
 
     expect(simulationResponseSchema.safeParse(response).success).toBe(false);
+  });
+});
+
+describe('simulationResponseSchema: consistência', () => {
+  it('aceita margem disponível igual à consignável', () => {
+    const response = {
+      ...withAlphaOffer({ maxInstallmentCents: 175000 }),
+      margin: { consignableCents: 175000, availableCents: 175000 },
+    };
+
+    expect(simulationResponseSchema.safeParse(response).success).toBe(true);
+  });
+
+  it('recusa margem disponível maior que a consignável', () => {
+    const response = {
+      ...withAlphaOffer({ maxInstallmentCents: 175001 }),
+      margin: { consignableCents: 175000, availableCents: 175001 },
+    };
+
+    expect(issuePaths(simulationResponseSchema, response)).toEqual([['margin', 'availableCents']]);
+  });
+
+  it.each([
+    [50000, 6],
+    [50000000, 96],
+  ])('aceita o valor %i e o prazo %i nos limites da requisição', (amount, term) => {
+    expect(simulationResponseSchema.safeParse(withRequest(amount, term)).success).toBe(true);
+  });
+
+  it.each([
+    [1000000, 5, 'termMonths'],
+    [1000000, 97, 'termMonths'],
+    [49999, 24, 'requestedAmountCents'],
+    [50000001, 24, 'requestedAmountCents'],
+  ])('recusa o valor %i com o prazo %i, fora dos limites', (amount, term, field) => {
+    expect(issuePaths(simulationResponseSchema, withRequest(amount, term))).toEqual([
+      ['request', field],
+    ]);
+  });
+
+  it('recusa dois resultados de sucesso do mesmo banco', () => {
+    const response = {
+      ...referenceResponse,
+      partial: false,
+      results: [alphaSuccess, alphaSuccess],
+    };
+
+    expect(issuePaths(simulationResponseSchema, response)).toEqual([['results', 1, 'bankId']]);
+  });
+
+  it('recusa um sucesso e uma falha do mesmo banco', () => {
+    const response = {
+      ...referenceResponse,
+      results: [alphaSuccess, { ...referenceResponse.results[1], bankId: 'alpha' }],
+    };
+
+    expect(issuePaths(simulationResponseSchema, response)).toEqual([['results', 1, 'bankId']]);
+  });
+
+  it('recusa parcela máxima diferente da margem disponível', () => {
+    expect(
+      issuePaths(simulationResponseSchema, withAlphaOffer({ maxInstallmentCents: 125001 })),
+    ).toEqual([['results', 0, 'offer', 'maxInstallmentCents']]);
+  });
+
+  it('recusa total diferente da parcela vezes o prazo', () => {
+    const response = withAlphaOffer({ totalCents: 1241593, totalInterestCents: 241593 });
+
+    expect(issuePaths(simulationResponseSchema, response)).toEqual([
+      ['results', 0, 'offer', 'totalCents'],
+    ]);
+  });
+
+  it('recusa juros diferentes do total menos o valor pedido', () => {
+    expect(
+      issuePaths(simulationResponseSchema, withAlphaOffer({ totalInterestCents: 241591 })),
+    ).toEqual([['results', 0, 'offer', 'totalInterestCents']]);
+  });
+
+  it('aceita oferta fora da margem com valor financiável igual ao valor pedido', () => {
+    const response = {
+      ...overMarginResponse,
+      results: [
+        {
+          ...overMarginResponse.results[0]!,
+          offer: { ...overMarginResponse.results[0]!.offer, maxFinanceableCents: 1000000 },
+        },
+      ],
+    };
+
+    expect(simulationResponseSchema.safeParse(overMarginResponse).success).toBe(true);
+    expect(simulationResponseSchema.safeParse(response).success).toBe(true);
+  });
+
+  it('recusa valor financiável maior que o valor pedido', () => {
+    const response = {
+      ...overMarginResponse,
+      results: [
+        {
+          ...overMarginResponse.results[0]!,
+          offer: { ...overMarginResponse.results[0]!.offer, maxFinanceableCents: 1000001 },
+        },
+      ],
+    };
+
+    expect(issuePaths(simulationResponseSchema, response)).toEqual([
+      ['results', 0, 'offer', 'maxFinanceableCents'],
+    ]);
+  });
+
+  it('aponta o banco inconsistente quando ele é o segundo', () => {
+    const response = {
+      ...referenceResponse,
+      partial: false,
+      results: [
+        alphaSuccess,
+        {
+          ...betaSuccess,
+          offer: { ...betaOffer, totalCents: 1217209, totalInterestCents: 217209 },
+        },
+      ],
+    };
+
+    expect(issuePaths(simulationResponseSchema, response)).toEqual([
+      ['results', 1, 'offer', 'totalCents'],
+    ]);
+  });
+
+  it('explica a regra violada em português', () => {
+    const result = simulationResponseSchema.safeParse(
+      withAlphaOffer({ totalCents: 1241593, totalInterestCents: 241593 }),
+    );
+
+    expect(result.error?.issues[0]?.message).toBe('totalCents deve ser a parcela vezes o prazo.');
   });
 });

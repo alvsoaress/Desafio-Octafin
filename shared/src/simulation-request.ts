@@ -4,10 +4,10 @@ import { validationMessages } from './messages';
 
 const MIN_SALARY_CENTS = 1;
 const MAX_SALARY_CENTS = 100_000_000;
-const MIN_REQUESTED_AMOUNT_CENTS = 50_000;
-const MAX_REQUESTED_AMOUNT_CENTS = 50_000_000;
-const MIN_TERM_MONTHS = 6;
-const MAX_TERM_MONTHS = 96;
+export const MIN_REQUESTED_AMOUNT_CENTS = 50_000;
+export const MAX_REQUESTED_AMOUNT_CENTS = 50_000_000;
+export const MIN_TERM_MONTHS = 6;
+export const MAX_TERM_MONTHS = 96;
 
 function typeError(issue: { input: unknown }): string {
   return issue.input === undefined ? validationMessages.required : validationMessages.invalidValue;
