@@ -3,7 +3,7 @@ import { loadConfig } from './config';
 
 describe('loadConfig', () => {
   it('usa os valores padrão quando nenhuma variável é informada', () => {
-    expect(loadConfig({})).toEqual({ alphaPort: 4001, betaPort: 4002, betaScenario: 'slow' });
+    expect(loadConfig({})).toEqual({ alphaPort: 4001, betaPort: 4002, betaScenario: 'ok' });
   });
 
   it('lê as variáveis informadas', () => {

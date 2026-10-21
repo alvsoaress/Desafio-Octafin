@@ -88,6 +88,24 @@ describe('BankCard', () => {
     expect(screen.queryByText(/Com essa margem/)).not.toBeInTheDocument();
   });
 
+  it.each([
+    ['dentro da margem', 'Aprovado', referenceAlpha!, referenceResponse],
+    ['fora da margem', 'Reprovado', overMarginAlpha!, overMarginResponse],
+    ['com margem zero', 'Reprovado', zeroMarginAlpha!, zeroMarginResponse],
+    ['em timeout', 'Sem resposta', betaTimeout, referenceResponse],
+    ['em unavailable', 'Sem resposta', betaUnavailable, referenceResponse],
+    ['em invalid-response', 'Sem resposta', betaInvalidResponse, referenceResponse],
+  ])('%s, mostra só o rótulo "%s"', (_case, label, result, response) => {
+    renderCard(result, response);
+
+    expect(screen.getByText(label)).toBeInTheDocument();
+    for (const other of ['Aprovado', 'Reprovado', 'Sem resposta']) {
+      if (other !== label) {
+        expect(screen.queryByText(other)).not.toBeInTheDocument();
+      }
+    }
+  });
+
   it('dentro da margem, não mostra aviso', () => {
     renderCard(referenceAlpha!, referenceResponse);
 

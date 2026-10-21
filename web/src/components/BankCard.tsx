@@ -1,5 +1,12 @@
 import type { BankResult, Offer } from '@consignado/shared';
 import { formatAnnualRate, formatCents, formatMonthlyRate } from '../lib/format';
+import { bankOutcome, type BankOutcome } from '../lib/result';
+
+const OUTCOME_LABELS: Record<BankOutcome, string> = {
+  approved: 'Aprovado',
+  rejected: 'Reprovado',
+  'no-response': 'Sem resposta',
+};
 
 export type BankCardProps = {
   result: BankResult;
@@ -43,11 +50,20 @@ function MarginWarning({
   );
 }
 
+function OutcomeLabel({ result }: { result: BankResult }) {
+  const outcome = bankOutcome(result);
+
+  return <span className={`outcome outcome-${outcome}`}>{OUTCOME_LABELS[outcome]}</span>;
+}
+
 export function BankCard({ result, lowest, availableMarginCents, termMonths }: BankCardProps) {
   if (result.status !== 'success') {
     return (
       <article className="bank-card bank-card-failed">
-        <h3>{result.bankName}</h3>
+        <div className="bank-card-header">
+          <h3>{result.bankName}</h3>
+          <OutcomeLabel result={result} />
+        </div>
         <p className="bank-error">{result.error.message}</p>
       </article>
     );
@@ -59,6 +75,7 @@ export function BankCard({ result, lowest, availableMarginCents, termMonths }: B
     <article className="bank-card">
       <div className="bank-card-header">
         <h3>{result.bankName}</h3>
+        <OutcomeLabel result={result} />
         {lowest && <span className="badge">Menor parcela</span>}
       </div>
       <dl className="offer">

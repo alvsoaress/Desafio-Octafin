@@ -99,6 +99,22 @@ export const overMarginResponse: SimulationResponse = {
   ],
 };
 
+export const oneApprovedResponse: SimulationResponse = {
+  requestId,
+  partial: false,
+  margin: { consignableCents: 175000, availableCents: 51000 },
+  request,
+  results: [
+    success('alpha', {
+      ...alphaOffer,
+      withinMargin: false,
+      maxInstallmentCents: 51000,
+      maxFinanceableCents: 985833,
+    }),
+    success('beta', { ...betaOffer, maxInstallmentCents: 51000 }),
+  ],
+};
+
 export const zeroMarginResponse: SimulationResponse = {
   requestId,
   partial: false,

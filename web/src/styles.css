@@ -244,16 +244,39 @@ button:disabled {
 }
 
 .bank-card h3 {
+  margin-right: auto;
   font-size: 1.125rem;
 }
 
+.outcome,
 .badge {
   padding: var(--space-1) var(--space-3);
   font-size: 0.875rem;
   font-weight: 600;
+  border: 1px solid transparent;
+  border-radius: 999px;
+}
+
+.outcome-approved {
   color: var(--color-success-text);
   background: var(--color-success-background);
-  border-radius: 999px;
+}
+
+.outcome-rejected {
+  color: var(--color-error-text);
+  background: var(--color-error-background);
+}
+
+.outcome-no-response {
+  color: var(--color-text-muted);
+  background: var(--color-background);
+  border-color: var(--color-divider);
+}
+
+.badge {
+  color: var(--color-primary);
+  background: var(--color-surface);
+  border-color: var(--color-primary);
 }
 
 .offer {

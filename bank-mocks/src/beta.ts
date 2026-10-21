@@ -37,7 +37,7 @@ const handleMalformedJson: ErrorRequestHandler = (_error, _request, response, _n
 };
 
 export function createBetaApp({
-  scenario = 'slow',
+  scenario = 'ok',
   delayMs = BETA_DEFAULT_DELAY_MS,
   slowDelayMs = BETA_SLOW_DELAY_MS,
   log,
