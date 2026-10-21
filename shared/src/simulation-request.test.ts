@@ -109,7 +109,7 @@ describe('simulationRequestSchema', () => {
       expect(parsed[field]).toBe(document.digits);
     });
 
-    it('recusa dígito verificador errado com a mensagem da RF-02', () => {
+    it('recusa dígito verificador errado com a mensagem do campo', () => {
       expect(fieldErrors({ [field]: wrongCheckDigit })).toEqual({ [field]: message });
     });
 
@@ -132,7 +132,7 @@ describe('simulationRequestSchema', () => {
       expect(fieldErrors({ salaryCents, existingDeductionsCents: 0 })).toEqual({});
     });
 
-    it.each([0, 100000001, 5000.5])('recusa %d com a mensagem da RF-02', (salaryCents) => {
+    it.each([0, 100000001, 5000.5])('recusa %d com a mensagem do campo', (salaryCents) => {
       expect(fieldErrors({ salaryCents })).toEqual({ salaryCents: validationMessages.salaryCents });
     });
 
@@ -203,7 +203,7 @@ describe('simulationRequestSchema', () => {
       expect(fieldErrors({ termMonths })).toEqual({});
     });
 
-    it.each([5, 97, 24.5])('recusa %d com a mensagem da RF-02', (termMonths) => {
+    it.each([5, 97, 24.5])('recusa %d com a mensagem do campo', (termMonths) => {
       expect(fieldErrors({ termMonths })).toEqual({ termMonths: validationMessages.termMonths });
     });
 

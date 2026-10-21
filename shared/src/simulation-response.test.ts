@@ -240,7 +240,7 @@ describe('bankResultSchema', () => {
 });
 
 describe('simulationResponseSchema', () => {
-  it('aceita o exemplo da RF-07.2', () => {
+  it('aceita o exemplo de referência', () => {
     expect(simulationResponseSchema.parse(referenceResponse)).toEqual(referenceResponse);
   });
 
