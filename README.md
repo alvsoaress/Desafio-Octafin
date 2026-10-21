@@ -124,6 +124,136 @@ Rode na raiz do projeto.
 
 Para rodar um script em um pacote só, use `-w`, por exemplo `npm test -w @consignado/api`.
 
+## API de simulação
+
+A API tem uma rota, `POST /api/simulations`, que recebe os dados do cliente, calcula a margem, consulta os bancos e devolve a oferta de cada um numa resposta única.
+
+### Requisição
+
+O corpo é um JSON com seis campos, todos obrigatórios. Valores em reais vão em centavos inteiros. Um campo fora desta lista é recusado.
+
+| Campo | Tipo | Regra | Mensagem de erro |
+| --- | --- | --- | --- |
+| `cpf` | string | CPF com dígitos verificadores válidos, com ou sem máscara. Sequências repetidas (`111.111.111-11`) são inválidas. | Informe um CPF válido. |
+| `employerCnpj` | string | CNPJ do empregador, com as mesmas regras do CPF. | Informe um CNPJ válido. |
+| `salaryCents` | inteiro | Salário bruto mensal, maior que zero e até R$ 1.000.000,00. | Informe o salário. |
+| `existingDeductionsCents` | inteiro | Descontos consignados existentes, de zero até o salário. | Os descontos não podem ser maiores que o salário. |
+| `requestedAmountCents` | inteiro | Valor desejado, de R$ 500,00 a R$ 500.000,00. | Informe um valor entre R$ 500,00 e R$ 500.000,00. |
+| `termMonths` | inteiro | Prazo em meses, de 6 a 96. | Informe um prazo entre 6 e 96 meses. |
+
+Campo ausente recebe "Campo obrigatório.", e tipo errado (texto no lugar de número, `null`, número negativo nos descontos) recebe "Valor inválido.". O front valida com o mesmo esquema, então as mensagens são as mesmas na tela e na API.
+
+### Resposta
+
+Com os serviços no ar (`npm run dev`, com o Beta no cenário padrão `slow`):
+
+```bash
+curl -s -X POST localhost:3000/api/simulations \
+  -H 'content-type: application/json' \
+  -d '{"cpf":"38192746500","employerCnpj":"47182936000144","salaryCents":500000,"existingDeductionsCents":50000,"requestedAmountCents":1000000,"termMonths":24}' | jq
+```
+
+Depois de cerca de 3 s, o tempo limite do Beta, a resposta é HTTP 200:
+
+```json
+{
+  "requestId": "dc32847a-…",
+  "partial": true,
+  "margin": {
+    "consignableCents": 175000,
+    "availableCents": 125000
+  },
+  "request": {
+    "requestedAmountCents": 1000000,
+    "termMonths": 24
+  },
+  "results": [
+    {
+      "bankId": "alpha",
+      "bankName": "Banco Alpha",
+      "status": "success",
+      "offer": {
+        "annualRate": "0.240000",
+        "monthlyRate": "0.018088",
+        "installmentCents": 51733,
+        "totalCents": 1241592,
+        "totalInterestCents": 241592,
+        "withinMargin": true,
+        "maxInstallmentCents": 125000,
+        "maxFinanceableCents": null
+      }
+    },
+    {
+      "bankId": "beta",
+      "bankName": "Banco Beta",
+      "status": "timeout",
+      "error": {
+        "code": "timeout",
+        "message": "O Banco Beta não respondeu a tempo."
+      }
+    }
+  ]
+}
+```
+
+- `margin`: a margem consignável (35% de R$ 5.000,00 = R$ 1.750,00) e a disponível (menos os R$ 500,00 de descontos = R$ 1.250,00).
+- `request`: o valor e o prazo simulados.
+- `results`: um item por banco, sempre na mesma ordem, mesmo quando o banco falha. Um banco com `status: "success"` traz `offer`; os demais trazem `error`, com uma mensagem pronta para a tela.
+- `offer`: as taxas anual e mensal como string decimal de 6 casas, para não perder precisão, e a parcela, o total pago e o total de juros em centavos. A taxa mensal é a equivalente composta de 24% a.a. (1,8088% a.m., e não 2%), e a parcela de R$ 517,33 sai da tabela Price com ela.
+- `withinMargin`: se a parcela cabe na margem disponível. `maxInstallmentCents` é a margem disponível, e `maxFinanceableCents`, quando a parcela não cabe, é o valor que caberia com a mesma taxa e prazo.
+- `partial`: `true` quando algum banco não devolveu oferta. A simulação continua válida.
+
+Quando a parcela passa da margem, por exemplo com salário de R$ 3.000,00 e descontos de R$ 600,00 (`"salaryCents":300000,"existingDeductionsCents":60000`), a margem disponível é R$ 450,00, e a oferta do Alpha indica quanto o cliente conseguiria pegar:
+
+```json
+"margin": { "consignableCents": 105000, "availableCents": 45000 },
+"offer": { "installmentCents": 51733, "withinMargin": false, "maxInstallmentCents": 45000, "maxFinanceableCents": 869852, "…": "…" }
+```
+
+Com descontos de R$ 1.050,00 (`"existingDeductionsCents":105000`), a margem disponível é zero. A resposta continua 200 e os bancos continuam sendo consultados, para o cliente ver as taxas, mas toda oferta vem com `withinMargin: false`, `maxInstallmentCents: 0` e `maxFinanceableCents: 0`.
+
+### Status de cada banco
+
+Os bancos são consultados em paralelo, cada um com o tempo limite `BANK_TIMEOUT_MS` (3 s por padrão). Quando o tempo estoura, a requisição ao banco é abortada, e não só ignorada. Não há nova tentativa automática: ela estouraria o tempo de resposta e multiplicaria as chamadas ao banco.
+
+| `status` | Quando acontece | Cenário do Beta que o produz |
+| --- | --- | --- |
+| `success` | Resposta 2xx com corpo válido no contrato do banco. | `ok` |
+| `timeout` | O banco não respondeu dentro do tempo limite. | `slow` |
+| `unavailable` | Conexão recusada ou resposta que não é 2xx. Também é o status de um erro inesperado no adaptador. | `unavailable` |
+| `invalid-response` | Resposta 2xx que não é JSON, fora do contrato ou com taxa implausível (negativa ou acima de 1000% a.a.). | `invalid` |
+
+### Erros
+
+Todo erro tem o mesmo formato, com o `requestId` para suporte:
+
+| HTTP | `error` | Quando |
+| --- | --- | --- |
+| 400 | `validation_error` | Algum campo é inválido. O objeto `fields` traz uma mensagem por campo. |
+| 400 | `invalid_json` | O corpo não é JSON. |
+| 413 | `payload_too_large` | O corpo passa de 10 KB. |
+| 500 | `internal_error` | Erro inesperado. A resposta não traz pilha, mensagem interna nem dados da requisição. |
+
+Por exemplo, um CPF inválido e um campo a mais:
+
+```bash
+curl -s -X POST localhost:3000/api/simulations \
+  -H 'content-type: application/json' \
+  -d '{"cpf":"11111111111","employerCnpj":"47182936000144","salaryCents":500000,"existingDeductionsCents":50000,"requestedAmountCents":1000000,"termMonths":24,"extra":true}'
+```
+
+```json
+{"error":"validation_error","fields":{"cpf":"Informe um CPF válido.","extra":"Campo não permitido."},"requestId":"b89eb7e9-…"}
+```
+
+E um corpo que não é JSON (`-d '{'`):
+
+```json
+{"error":"invalid_json","requestId":"0a9cf84b-…"}
+```
+
+Toda resposta traz o cabeçalho `x-request-id`, com o mesmo valor do `requestId` do corpo. Se a requisição enviar um `x-request-id` que seja um UUID válido, ele é reaproveitado; qualquer outro valor é trocado por um novo. O CORS libera só a origem do `WEB_ORIGIN`: uma requisição de outra origem não recebe os cabeçalhos `Access-Control-*`.
+
 ## Bancos simulados
 
 O pacote `bank-mocks` simula dois bancos parceiros num único processo, cada um na sua porta e com um contrato diferente, como acontece com APIs de bancos reais. Os bancos validam o corpo recebido e respondem HTTP 400 quando ele vem fora do contrato. Nenhum deles guarda nem registra o CPF: o log de cada requisição traz só banco, método, caminho, status e duração.
@@ -152,13 +282,19 @@ O Beta se comporta conforme a variável `BETA_SCENARIO`, sempre do mesmo jeito e
 | `unavailable` | Responde HTTP 503 a qualquer requisição. | `unavailable` |
 | `invalid` | Responde HTTP 200 sem o campo da taxa. | `invalid-response` |
 
-Para trocar o cenário, reinicie os bancos simulados com a variável, por exemplo:
+Para trocar o cenário, reinicie com a variável. Na raiz, ela vale para o `npm run dev` inteiro:
+
+```bash
+BETA_SCENARIO=ok npm run dev
+```
+
+Para reiniciar só os bancos simulados, deixando a API e o front no ar:
 
 ```bash
 BETA_SCENARIO=ok npm run dev -w @consignado/bank-mocks
 ```
 
-ou defina `BETA_SCENARIO` no `bank-mocks/.env`. Um valor desconhecido impede a subida, com uma mensagem que lista os cenários aceitos.
+Também dá para definir `BETA_SCENARIO` no `bank-mocks/.env`. Um valor desconhecido impede a subida, com uma mensagem que lista os cenários aceitos.
 
 ### Testando com `curl`
 
@@ -184,3 +320,17 @@ Resultado esperado do Beta em cada cenário:
 | `slow` | A mesma oferta e `200`, depois de cerca de 10 s |
 | `unavailable` | `{"erro":"servico_indisponivel"}` e `503` |
 | `invalid` | `{"codigo":"…"}` e `200`, sem `taxaAnualPercentual` |
+
+## Logs e privacidade
+
+A API escreve logs em JSON com o `pino`. Cada requisição gera uma linha com só `requestId`, método, caminho, status e duração, e cada simulação registra, por banco, o `bankId`, o `status` e a duração da consulta. A simulação do exemplo acima gera estas linhas (sem os campos `level`, `time`, `pid` e `hostname`):
+
+```json
+{"requestId":"dc32847a-…","bankId":"alpha","status":"success","durationMs":171,"msg":"Consulta ao banco concluída"}
+{"requestId":"dc32847a-…","bankId":"beta","status":"timeout","durationMs":3009,"msg":"Consulta ao banco concluída"}
+{"requestId":"dc32847a-…","method":"POST","path":"/api/simulations","status":200,"durationMs":3054,"msg":"Requisição concluída"}
+```
+
+Como proteção extra, toda linha passa por um mascaramento que troca por `[REDACTED]` o valor das chaves `cpf`, `employerCnpj`, `salaryCents`, `existingDeductionsCents`, `requestedAmountCents`, `body`, `authorization` e `cookie`, em qualquer nível do objeto. Assim, um objeto com esses campos passado ao logger por engano não vaza os dados. Um erro inesperado é registrado só com o `requestId` e o nome do erro, sem a mensagem, que poderia conter dados da requisição.
+
+Nada é gravado: não há banco de dados, arquivo nem cache, e o front não usa `localStorage`. O CPF, o valor e o prazo vão para os bancos, que precisam deles para cotar; o salário e os descontos não saem da API. Todos os CPFs e CNPJs do projeto, nos exemplos, nos mocks e nos testes, são fictícios.
