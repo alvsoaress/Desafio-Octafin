@@ -1,5 +1,5 @@
 import { simulationRequestSchema, validationMessages } from '@consignado/shared';
-import { fictitiousCnpjs, fictitiousCpfs } from '@consignado/shared/fixtures';
+import { fictitiousCnpjs, fictitiousCpfs, fictitiousCustomer } from '@consignado/shared/fixtures';
 import express from 'express';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
@@ -10,6 +10,8 @@ const [cpf] = fictitiousCpfs;
 const [cnpj] = fictitiousCnpjs;
 
 const validBody = {
+  name: fictitiousCustomer.name,
+  email: fictitiousCustomer.email,
   cpf: cpf.masked,
   employerCnpj: cnpj.masked,
   salaryCents: 500000,

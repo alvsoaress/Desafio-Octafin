@@ -164,6 +164,8 @@ describe('App', () => {
       .mockResolvedValue({ kind: 'success', response: referenceResponse });
     const { user } = renderApp(simulate);
     const order = [
+      'Nome completo',
+      'E-mail',
       'CPF',
       'CNPJ do empregador',
       'Salário bruto mensal',
@@ -180,7 +182,7 @@ describe('App', () => {
     await user.tab();
     expect(submitButton()).toHaveFocus();
 
-    await user.click(screen.getByLabelText('CPF'));
+    await user.click(screen.getByLabelText('Nome completo'));
     await fillForm(user);
     await user.keyboard('{Enter}');
 

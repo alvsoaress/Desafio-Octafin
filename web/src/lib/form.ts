@@ -6,6 +6,8 @@ import {
 } from '@consignado/shared';
 
 export type FormValues = {
+  name: string;
+  email: string;
   cpf: string;
   employerCnpj: string;
   salary: string;
@@ -19,6 +21,8 @@ export type FormField = keyof FormValues;
 export type FormErrors = Partial<Record<FormField, string>>;
 
 export const emptyFormValues: FormValues = {
+  name: '',
+  email: '',
   cpf: '',
   employerCnpj: '',
   salary: '',
@@ -28,6 +32,8 @@ export const emptyFormValues: FormValues = {
 };
 
 const requestFieldToFormField: Record<string, FormField> = {
+  name: 'name',
+  email: 'email',
   cpf: 'cpf',
   employerCnpj: 'employerCnpj',
   salaryCents: 'salary',
@@ -67,6 +73,8 @@ export function toFormErrors(fields: Record<string, string>): FormErrors {
 
 export function validateForm(values: FormValues): FormValidation {
   const result = simulationRequestSchema.safeParse({
+    name: values.name,
+    email: values.email,
     cpf: values.cpf,
     employerCnpj: values.employerCnpj,
     salaryCents: toCents(values.salary),

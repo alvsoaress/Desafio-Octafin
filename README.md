@@ -13,7 +13,7 @@ npm run dev
 
 O `npm run dev` sobe o front (http://localhost:5173), a API (porta 3000) e os dois bancos simulados (portas 4001 e 4002). Não é preciso criar `.env`: cada pacote tem um `.env.example` com valores que já funcionam.
 
-Para testar na tela, use os dados fictícios de referência: CPF `381.927.465-00`, CNPJ `47.182.936/0001-44`, salário `5.000,00`, descontos `500,00`, valor `10.000,00` e prazo `24`. Os dois bancos aprovam, com parcelas de R$ 517,33 (Alpha) e R$ 507,17 (Beta).
+Para testar na tela, use os dados fictícios de referência: nome `Maria Fictícia da Silva`, e-mail `maria.ficticia@example.com`, CPF `381.927.465-00`, CNPJ `47.182.936/0001-44`, salário `5.000,00`, descontos `500,00`, valor `10.000,00` e prazo `24`. Os dois bancos aprovam, com parcelas de R$ 517,33 (Alpha) e R$ 507,17 (Beta).
 
 ### Cenários do Banco Beta
 
@@ -52,7 +52,7 @@ A API tem uma rota, `POST /api/simulations`, com valores em centavos:
 ```bash
 curl -s -X POST localhost:3000/api/simulations \
   -H 'content-type: application/json' \
-  -d '{"cpf":"38192746500","employerCnpj":"47182936000144","salaryCents":500000,"existingDeductionsCents":50000,"requestedAmountCents":1000000,"termMonths":24}'
+  -d '{"name":"Maria Fictícia da Silva","email":"maria.ficticia@example.com","cpf":"38192746500","employerCnpj":"47182936000144","salaryCents":500000,"existingDeductionsCents":50000,"requestedAmountCents":1000000,"termMonths":24}'
 ```
 
 A resposta é sempre HTTP 200 quando a entrada é válida, mesmo com bancos falhando: cada banco vem em `results` com `status` (`success`, `timeout`, `unavailable` ou `invalid-response`), e `partial: true` indica que algum falhou. Entrada inválida recebe 400 com uma mensagem em português por campo; erro inesperado, 500 sem detalhes internos. Toda resposta traz um `requestId` para suporte.
@@ -77,6 +77,7 @@ Para produção: `npm run build`, depois `npm start -w @consignado/api`, `npm st
 - **Camadas com dependências apontando para o domínio.** O domínio (margem, Price, Price inversa) é puro e não importa Express, `fetch` nem infraestrutura; o ESLint barra esses imports no `npm run lint`.
 - **Contrato da resposta com regras de consistência.** Além dos tipos, o esquema recusa números incoerentes (total diferente de parcela × prazo, margem disponível acima da consignável, banco repetido). O front recusa uma resposta assim, e os testes da API quebram se o cálculo produzir uma.
 - **Bancos simulados por HTTP real**, com cenários determinísticos, para que a demonstração e os testes mostrem as falhas sempre do mesmo jeito.
+- **Nome e e-mail validados, mas fora da consulta aos bancos.** A API exige nome completo e um e-mail válido, mas envia a cada banco só CPF, valor e prazo, o mínimo para a cotação. Os dois campos também passam pelo mascaramento de logs.
 - **Sem banco de dados.** O fluxo não precisa de persistência, e não guardar CPF nem salário reduz o risco de vazamento (LGPD).
 - **Front sem bibliotecas de estilo, componentes, formulário ou máscara.** São seis campos; máscaras e formatação são funções puras em aritmética inteira, testadas sem React.
 
@@ -85,6 +86,7 @@ Para produção: `npm run build`, depois `npm start -w @consignado/api`, `npm st
 - **Bancos simulados.** Alpha e Beta são mocks com taxa fixa por faixa de prazo; não há integração com bancos reais nem consulta de margem em órgão pagador.
 - **Só juros.** A simulação não inclui CET, IOF nem seguro prestamista, então o custo real do empréstimo é maior que o mostrado.
 - **Limites iniciais.** Prazo de 6 a 96 meses, valor de R$ 500,00 a R$ 500.000,00 e salário até R$ 1.000.000,00, definidos em `shared/src/simulation-request.ts`.
+- **E-mail sem verificação.** O formato é validado, mas nenhuma mensagem é enviada para confirmar o endereço.
 - **Margem sobre o salário bruto** informado pelo cliente, sem validação externa.
 - **CNPJ só numérico.** O CNPJ alfanumérico da Receita ainda é recusado. O CNPJ é validado, mas não é enviado aos bancos.
 - **Resposta única.** A tela mostra um carregamento global até o último banco responder ou estourar o tempo limite; não mostra cada banco chegando.
@@ -119,7 +121,7 @@ Cada proposta diz o problema, o que muda e o ganho para o cliente ou para o serv
 
 - **Dados pessoais fora dos logs e sem persistência** (feita).
   - *Problema:* logs costumam vazar CPF e salário.
-  - *Proposta:* nada é gravado, e toda linha de log passa por um mascaramento recursivo que troca CPF, CNPJ, valores, corpo e credenciais por `[REDACTED]`. O salário e os descontos nunca saem da API.
+  - *Proposta:* nada é gravado, e toda linha de log passa por um mascaramento recursivo que troca nome, e-mail, CPF, CNPJ, valores, corpo e credenciais por `[REDACTED]`. O nome, o e-mail, o salário e os descontos nunca saem da API.
   - *Ganho:* menor exposição a vazamentos e aderência à LGPD.
 - **Superfície da API reduzida** (feita).
   - *Problema:* uma API aberta aceita qualquer origem e qualquer corpo.

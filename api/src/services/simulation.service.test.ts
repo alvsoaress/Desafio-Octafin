@@ -5,7 +5,7 @@ import {
   type SimulationRequest,
   type SimulationRequestInput,
 } from '@consignado/shared';
-import { fictitiousCnpjs, fictitiousCpfs } from '@consignado/shared/fixtures';
+import { fictitiousCnpjs, fictitiousCpfs, fictitiousCustomer } from '@consignado/shared/fixtures';
 import { describe, expect, it, vi } from 'vitest';
 import type { BankAdapter, BankQuoteRequest, BankQuoteResult } from '../domain/bank-adapter';
 import { calculateOffer } from '../domain/loan';
@@ -16,6 +16,8 @@ const CPF = fictitiousCpfs[0];
 
 function simulationRequest(overrides: Partial<SimulationRequestInput> = {}) {
   return simulationRequestSchema.parse({
+    name: fictitiousCustomer.name,
+    email: fictitiousCustomer.email,
     cpf: CPF.masked,
     employerCnpj: fictitiousCnpjs[0].masked,
     salaryCents: 500000,
@@ -139,7 +141,7 @@ describe('SimulationService', () => {
     expect(performance.now() - startedAt).toBeLessThan(190);
   });
 
-  it('envia ao banco só o CPF sem máscara, o valor e o prazo', async () => {
+  it('envia ao banco só o CPF sem máscara, o valor e o prazo, sem nome, e-mail nem salário', async () => {
     const alpha = fakeAdapter('alpha', respondsWith(success('0.24')));
 
     await createService([alpha]).simulate(simulationRequest(), randomUUID());

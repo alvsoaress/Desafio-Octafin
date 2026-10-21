@@ -1,3 +1,8 @@
+export const fictitiousCustomer = {
+  name: 'Maria Fictícia da Silva',
+  email: 'maria.ficticia@example.com',
+} as const;
+
 export const fictitiousCpfs = [
   { digits: '38192746500', masked: '381.927.465-00' },
   { digits: '60415827353', masked: '604.158.273-53' },

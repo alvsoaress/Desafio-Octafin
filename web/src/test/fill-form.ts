@@ -1,4 +1,4 @@
-import { fictitiousCnpjs, fictitiousCpfs } from '@consignado/shared/fixtures';
+import { fictitiousCnpjs, fictitiousCpfs, fictitiousCustomer } from '@consignado/shared/fixtures';
 import { screen } from '@testing-library/react';
 import type { UserEvent } from '@testing-library/user-event';
 
@@ -6,6 +6,8 @@ const [cpf] = fictitiousCpfs;
 const [cnpj] = fictitiousCnpjs;
 
 export const referenceFormInput = {
+  'Nome completo': fictitiousCustomer.name,
+  'E-mail': fictitiousCustomer.email,
   CPF: cpf.digits,
   'CNPJ do empregador': cnpj.digits,
   'Salário bruto mensal': '500000',
@@ -15,6 +17,8 @@ export const referenceFormInput = {
 };
 
 export const referenceRequest = {
+  name: fictitiousCustomer.name,
+  email: fictitiousCustomer.email,
   cpf: cpf.digits,
   employerCnpj: cnpj.digits,
   salaryCents: 500000,

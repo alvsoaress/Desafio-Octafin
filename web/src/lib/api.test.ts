@@ -1,5 +1,5 @@
 import type { SimulationRequest } from '@consignado/shared';
-import { fictitiousCnpjs, fictitiousCpfs } from '@consignado/shared/fixtures';
+import { fictitiousCnpjs, fictitiousCpfs, fictitiousCustomer } from '@consignado/shared/fixtures';
 import { describe, expect, it, vi } from 'vitest';
 import { referenceResponse as simulationResponse } from '../test/responses';
 import { simulate } from './api';
@@ -10,6 +10,8 @@ const baseUrl = 'http://api.test';
 const { requestId } = simulationResponse;
 
 const simulationRequest: SimulationRequest = {
+  name: fictitiousCustomer.name,
+  email: fictitiousCustomer.email,
   cpf: cpf.digits,
   employerCnpj: cnpj.digits,
   salaryCents: 500000,

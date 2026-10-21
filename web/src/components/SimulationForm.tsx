@@ -15,10 +15,29 @@ type FieldConfig = {
   label: string;
   mask: (value: string) => string;
   inputMode: HTMLAttributes<HTMLInputElement>['inputMode'];
+  autoComplete?: string;
   placeholder: string;
 };
 
+const keepAsTyped = (value: string) => value;
+
 const fields: readonly FieldConfig[] = [
+  {
+    name: 'name',
+    label: 'Nome completo',
+    mask: keepAsTyped,
+    inputMode: 'text',
+    autoComplete: 'name',
+    placeholder: 'Como no documento',
+  },
+  {
+    name: 'email',
+    label: 'E-mail',
+    mask: keepAsTyped,
+    inputMode: 'email',
+    autoComplete: 'email',
+    placeholder: 'voce@exemplo.com',
+  },
   { name: 'cpf', label: 'CPF', mask: maskCpf, inputMode: 'numeric', placeholder: '000.000.000-00' },
   {
     name: 'employerCnpj',
@@ -132,6 +151,7 @@ export function SimulationForm({
             value={values[field.name]}
             error={errorFor(field.name)}
             inputMode={field.inputMode}
+            autoComplete={field.autoComplete}
             placeholder={field.placeholder}
             onChange={(value) => handleChange(field, value)}
             onBlur={() => handleBlur(field.name)}

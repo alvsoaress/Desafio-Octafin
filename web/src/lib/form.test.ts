@@ -1,5 +1,5 @@
 import { validationMessages } from '@consignado/shared';
-import { fictitiousCnpjs, fictitiousCpfs } from '@consignado/shared/fixtures';
+import { fictitiousCnpjs, fictitiousCpfs, fictitiousCustomer } from '@consignado/shared/fixtures';
 import { describe, expect, it } from 'vitest';
 import { toFormErrors, validateForm, type FormValues } from './form';
 
@@ -7,6 +7,8 @@ const [cpf] = fictitiousCpfs;
 const [cnpj] = fictitiousCnpjs;
 
 const referenceValues: FormValues = {
+  name: fictitiousCustomer.name,
+  email: fictitiousCustomer.email,
   cpf: cpf.masked,
   employerCnpj: cnpj.masked,
   salary: '5.000,00',
@@ -30,6 +32,8 @@ describe('validateForm', () => {
     expect(validateForm(referenceValues)).toEqual({
       success: true,
       data: {
+        name: fictitiousCustomer.name,
+        email: fictitiousCustomer.email,
         cpf: cpf.digits,
         employerCnpj: cnpj.digits,
         salaryCents: 500000,
@@ -79,6 +83,10 @@ describe('validateForm', () => {
     ['cpf', '381.927.465-01', validationMessages.cpf],
     ['employerCnpj', '11.111.111/1111-11', validationMessages.employerCnpj],
     ['salary', 'abc', validationMessages.invalidValue],
+    ['name', '', validationMessages.required],
+    ['name', 'Maria', validationMessages.name],
+    ['email', '', validationMessages.required],
+    ['email', 'maria@', validationMessages.email],
   ] as const)('com %s "%s" dá "%s"', (field, value, message) => {
     expect(errorsFor({ [field]: value })).toEqual({ [field]: message });
   });
@@ -88,6 +96,8 @@ describe('toFormErrors', () => {
   it('traduz os campos da API para os do formulário e ignora os desconhecidos', () => {
     expect(
       toFormErrors({
+        name: validationMessages.name,
+        email: validationMessages.email,
         cpf: validationMessages.cpf,
         salaryCents: validationMessages.salaryCents,
         existingDeductionsCents: validationMessages.existingDeductionsCents,
@@ -96,6 +106,8 @@ describe('toFormErrors', () => {
         body: validationMessages.required,
       }),
     ).toEqual({
+      name: validationMessages.name,
+      email: validationMessages.email,
       cpf: validationMessages.cpf,
       salary: validationMessages.salaryCents,
       existingDeductions: validationMessages.existingDeductionsCents,

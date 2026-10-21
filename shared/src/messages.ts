@@ -2,6 +2,8 @@ export const validationMessages = {
   required: 'Campo obrigatório.',
   invalidValue: 'Valor inválido.',
   unknownField: 'Campo não permitido.',
+  name: 'Informe seu nome completo.',
+  email: 'Informe um e-mail válido.',
   cpf: 'Informe um CPF válido.',
   employerCnpj: 'Informe um CNPJ válido.',
   salaryCents: 'Informe o salário.',

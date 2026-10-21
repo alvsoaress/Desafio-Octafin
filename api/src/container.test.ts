@@ -1,5 +1,5 @@
 import { simulationRequestSchema } from '@consignado/shared';
-import { fictitiousCnpjs, fictitiousCpfs } from '@consignado/shared/fixtures';
+import { fictitiousCnpjs, fictitiousCpfs, fictitiousCustomer } from '@consignado/shared/fixtures';
 import nock from 'nock';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import type { ApiConfig } from './config/env';
@@ -34,6 +34,8 @@ describe('createContainer', () => {
 
     const response = await simulationService.simulate(
       simulationRequestSchema.parse({
+        name: fictitiousCustomer.name,
+        email: fictitiousCustomer.email,
         cpf: fictitiousCpfs[0].digits,
         employerCnpj: fictitiousCnpjs[0].digits,
         salaryCents: 500000,

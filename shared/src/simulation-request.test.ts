@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { fictitiousCnpjs, fictitiousCpfs } from './fixtures';
+import { fictitiousCnpjs, fictitiousCpfs, fictitiousCustomer } from './fixtures';
 import { validationMessages } from './messages';
 import { simulationRequestSchema, toFieldErrors } from './simulation-request';
 
 const validRequest = {
+  name: fictitiousCustomer.name,
+  email: fictitiousCustomer.email,
   cpf: fictitiousCpfs[0].digits,
   employerCnpj: fictitiousCnpjs[0].digits,
   salaryCents: 500000,
@@ -33,6 +35,67 @@ describe('simulationRequestSchema', () => {
   it('recusa campo desconhecido', () => {
     expect(fieldErrors({ interestRate: '0.01' })).toEqual({
       interestRate: validationMessages.unknownField,
+    });
+  });
+
+  describe('name', () => {
+    it.each(["Ana D'Ávila", 'João Pedro Albuquerque-Lins', 'Zoë Ng'])('aceita "%s"', (name) => {
+      expect(fieldErrors({ name })).toEqual({});
+    });
+
+    it('apara as pontas e junta os espaços internos', () => {
+      expect(
+        simulationRequestSchema.parse({ ...validRequest, name: '  Maria   da  Silva ' }).name,
+      ).toBe('Maria da Silva');
+    });
+
+    it.each([
+      'Maria',
+      'Maria 2 Silva',
+      'Maria  ',
+      'Maria @Silva',
+      `${'a'.repeat(60)} ${'b'.repeat(60)}`,
+    ])('recusa "%s" pedindo o nome completo', (name) => {
+      expect(fieldErrors({ name })).toEqual({ name: validationMessages.name });
+    });
+
+    it('recusa ausente e vazio como obrigatórios', () => {
+      expect(fieldErrors({ name: '   ' })).toEqual({ name: validationMessages.required });
+
+      const result = simulationRequestSchema.safeParse(without('name'));
+
+      expect(result.success ? {} : toFieldErrors(result.error)).toEqual({
+        name: validationMessages.required,
+      });
+    });
+  });
+
+  describe('email', () => {
+    it('apara e converte para minúsculas', () => {
+      expect(
+        simulationRequestSchema.parse({ ...validRequest, email: ' Maria.Silva@Example.COM ' })
+          .email,
+      ).toBe('maria.silva@example.com');
+    });
+
+    it.each([
+      'maria',
+      'maria@',
+      '@example.com',
+      'maria silva@example.com',
+      `${'a'.repeat(250)}@x.com`,
+    ])('recusa "%s"', (email) => {
+      expect(fieldErrors({ email })).toEqual({ email: validationMessages.email });
+    });
+
+    it('recusa ausente e vazio como obrigatórios', () => {
+      expect(fieldErrors({ email: '' })).toEqual({ email: validationMessages.required });
+
+      const result = simulationRequestSchema.safeParse(without('email'));
+
+      expect(result.success ? {} : toFieldErrors(result.error)).toEqual({
+        email: validationMessages.required,
+      });
     });
   });
 

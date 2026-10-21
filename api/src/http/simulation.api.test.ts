@@ -3,7 +3,7 @@ import {
   validationMessages,
   type SimulationRequestInput,
 } from '@consignado/shared';
-import { fictitiousCnpjs, fictitiousCpfs } from '@consignado/shared/fixtures';
+import { fictitiousCnpjs, fictitiousCpfs, fictitiousCustomer } from '@consignado/shared/fixtures';
 import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
 import { createApp } from '../app';
@@ -18,6 +18,8 @@ const [cnpj] = fictitiousCnpjs;
 const webOrigin = 'http://localhost:5173';
 
 const validBody: SimulationRequestInput = {
+  name: fictitiousCustomer.name,
+  email: fictitiousCustomer.email,
   cpf: cpf.masked,
   employerCnpj: cnpj.masked,
   salaryCents: 500000,

@@ -6,6 +6,7 @@ export type FieldProps = {
   value: string;
   error?: string | undefined;
   inputMode: HTMLAttributes<HTMLInputElement>['inputMode'];
+  autoComplete?: string | undefined;
   placeholder?: string;
   onChange: (value: string) => void;
   onBlur: () => void;
@@ -17,6 +18,7 @@ export function Field({
   value,
   error,
   inputMode,
+  autoComplete = 'off',
   placeholder,
   onChange,
   onBlur,
@@ -31,7 +33,7 @@ export function Field({
         name={name}
         type="text"
         inputMode={inputMode}
-        autoComplete="off"
+        autoComplete={autoComplete}
         placeholder={placeholder}
         value={value}
         aria-invalid={error ? true : undefined}

@@ -1,4 +1,4 @@
-import { fictitiousCnpjs, fictitiousCpfs } from '@consignado/shared/fixtures';
+import { fictitiousCnpjs, fictitiousCpfs, fictitiousCustomer } from '@consignado/shared/fixtures';
 import { describe, expect, it } from 'vitest';
 import { createLogger, REDACTED, redactSensitive } from './logger';
 
@@ -69,6 +69,16 @@ describe('redactSensitive', () => {
         },
       },
     });
+  });
+
+  it('mascara o nome e o e-mail do cliente sem tocar no nome do banco', () => {
+    expect(
+      redactSensitive({
+        name: fictitiousCustomer.name,
+        email: fictitiousCustomer.email,
+        bankName: 'Banco Alpha',
+      }),
+    ).toEqual({ name: REDACTED, email: REDACTED, bankName: 'Banco Alpha' });
   });
 
   it.each([null, undefined, 42, 'texto', true])('devolve %s sem alterar', (value) => {

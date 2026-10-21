@@ -2,6 +2,8 @@ import { pino, type DestinationStream, type Logger as PinoLogger } from 'pino';
 import type { LogLevel } from '../config/env';
 
 export const SENSITIVE_KEYS = [
+  'name',
+  'email',
   'cpf',
   'employerCnpj',
   'salaryCents',

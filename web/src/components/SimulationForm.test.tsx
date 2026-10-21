@@ -71,13 +71,13 @@ describe('SimulationForm', () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
-  it('no envio vazio, mostra todos os erros e foca o CPF', async () => {
+  it('no envio vazio, mostra todos os erros e foca o nome', async () => {
     const { user } = renderForm();
 
     await user.click(screen.getByRole('button', { name: 'Simular' }));
 
-    expect(input('CPF')).toHaveFocus();
-    expect(screen.getAllByText(validationMessages.required)).toHaveLength(6);
+    expect(input('Nome completo')).toHaveFocus();
+    expect(screen.getAllByText(validationMessages.required)).toHaveLength(8);
   });
 
   it('envia o exemplo de referência em centavos e mantém os valores digitados', async () => {
@@ -90,6 +90,14 @@ describe('SimulationForm', () => {
     expect(input('CPF')).toHaveValue(cpf.masked);
     expect(input('Valor desejado')).toHaveValue('10.000,00');
     expect(input('Prazo (meses)')).toHaveValue('24');
+  });
+
+  it('deixa o navegador preencher só o nome e o e-mail', () => {
+    renderForm();
+
+    expect(input('Nome completo')).toHaveAttribute('autocomplete', 'name');
+    expect(input('E-mail')).toHaveAttribute('autocomplete', 'email');
+    expect(input('CPF')).toHaveAttribute('autocomplete', 'off');
   });
 
   it('desabilitado, não envia', async () => {

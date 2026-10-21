@@ -8,9 +8,21 @@ export const MIN_REQUESTED_AMOUNT_CENTS = 50_000;
 export const MAX_REQUESTED_AMOUNT_CENTS = 50_000_000;
 export const MIN_TERM_MONTHS = 6;
 export const MAX_TERM_MONTHS = 96;
+export const MAX_NAME_LENGTH = 120;
+export const MAX_EMAIL_LENGTH = 254;
+
+const fullNamePattern = /^\p{L}+(?:['’-]\p{L}+)*(?:\s+\p{L}+(?:['’-]\p{L}+)*)+$/u;
+const emailSchema = z.email();
 
 function typeError(issue: { input: unknown }): string {
   return issue.input === undefined ? validationMessages.required : validationMessages.invalidValue;
+}
+
+function requiredText() {
+  return z
+    .string({ error: typeError })
+    .trim()
+    .min(1, { error: validationMessages.required, abort: true });
 }
 
 function documentField(
@@ -18,13 +30,20 @@ function documentField(
   normalize: (value: string) => string | null,
   message: string,
 ) {
-  return z
-    .string({ error: typeError })
-    .trim()
-    .min(1, { error: validationMessages.required, abort: true })
+  return requiredText()
     .refine(isValid, { error: message })
     .transform((value) => normalize(value) ?? value);
 }
+
+const name = requiredText()
+  .max(MAX_NAME_LENGTH, { error: validationMessages.name, abort: true })
+  .regex(fullNamePattern, { error: validationMessages.name })
+  .transform((value) => value.replace(/\s+/g, ' '));
+
+const email = requiredText()
+  .max(MAX_EMAIL_LENGTH, { error: validationMessages.email, abort: true })
+  .toLowerCase()
+  .refine((value) => emailSchema.safeParse(value).success, { error: validationMessages.email });
 
 function integerField(min: number, max: number, message: string) {
   return z
@@ -48,6 +67,8 @@ const existingDeductionsCents = z
 export const simulationRequestSchema = z
   .strictObject(
     {
+      name,
+      email,
       cpf: documentField(isValidCpf, normalizeCpf, validationMessages.cpf),
       employerCnpj: documentField(isValidCnpj, normalizeCnpj, validationMessages.employerCnpj),
       salaryCents,
