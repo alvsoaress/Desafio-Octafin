@@ -11,6 +11,18 @@ Simula um empréstimo consignado em vários bancos ao mesmo tempo e mostra a ofe
 - **Consulta paralela aos bancos**, com tempo limite por banco. Um banco lento, fora do ar ou com resposta inválida não derruba a simulação: as demais ofertas aparecem, junto com o motivo da falha daquele banco.
 - **Privacidade**: nada é gravado, e CPF, CNPJ e valores não aparecem nos logs.
 
+## Termos
+
+| Termo | Significado |
+| --- | --- |
+| Consignado | Empréstimo cujas parcelas são descontadas direto da folha de pagamento do cliente. |
+| Margem consignável | Parte do salário que pode ir para parcelas de consignado: 35% do salário bruto. |
+| Margem disponível | A margem consignável menos os descontos consignados que o cliente já paga. É o teto da nova parcela. |
+| Tabela Price | Sistema de amortização com parcelas fixas: `parcela = valor × i / (1 − (1 + i)^−n)`, com a taxa mensal `i` e o prazo `n`. |
+| Valor financiável | O caminho inverso da Price: quanto o cliente consegue pegar com uma parcela igual à margem disponível. |
+| Resultado parcial | Simulação em que algum banco não devolveu oferta. A resposta continua válida (HTTP 200) e diz qual banco falhou e por quê. |
+| Centavos | Unidade de todos os valores na API e nas regras: R$ 10.000,00 é `1000000`. |
+
 ## Arquitetura
 
 Monorepo com npm workspaces:
@@ -47,13 +59,54 @@ npm run dev
 
 O `npm run dev` sobe a API, os bancos simulados e o front com recarga automática. Abra http://localhost:5173.
 
-Cada pacote tem um `.env.example` com as variáveis e seus valores padrão, que já funcionam localmente. Por enquanto, só os bancos simulados leem o `.env`; a API e o front passam a lê-lo quando ganharem configuração própria. Para mudar alguma variável dos bancos simulados, copie o arquivo para `.env` no mesmo pacote:
+Não é preciso criar nenhum `.env` para rodar localmente. Cada pacote (`api`, `bank-mocks` e `web`) tem um `.env.example` com valores que já funcionam:
+
+- o `npm run dev` da API carrega o `api/.env.example` e, por cima dele, o `api/.env`, quando existir;
+- o `npm start` da API carrega só o `api/.env`;
+- os bancos simulados leem o `bank-mocks/.env`, quando existir, e usam os padrões do código no resto;
+- o front lê o `web/.env` pelo Vite, e sem ele usa `http://localhost:3000`.
+
+Para mudar alguma variável, copie o exemplo para `.env` no mesmo pacote e edite:
 
 ```bash
 cp bank-mocks/.env.example bank-mocks/.env
 ```
 
 Uma variável passada na linha de comando tem precedência sobre o `.env`.
+
+### Variáveis de ambiente
+
+| Variável | Pacote | Padrão | Uso |
+| --- | --- | --- | --- |
+| `WEB_ORIGIN` | api | obrigatória | Única origem liberada no CORS (`http://localhost:5173` no exemplo). |
+| `ALPHA_BASE_URL` | api | obrigatória | URL do Banco Alpha (`http://localhost:4001` no exemplo). |
+| `BETA_BASE_URL` | api | obrigatória | URL do Banco Beta (`http://localhost:4002` no exemplo). |
+| `PORT` | api | `3000` | Porta da API. |
+| `BANK_TIMEOUT_MS` | api | `3000` | Tempo limite de cada banco, em milissegundos. |
+| `LOG_LEVEL` | api | `info` | Nível do log: `fatal`, `error`, `warn`, `info`, `debug`, `trace` ou `silent`. |
+| `ALPHA_PORT` | bank-mocks | `4001` | Porta do Banco Alpha. |
+| `BETA_PORT` | bank-mocks | `4002` | Porta do Banco Beta. |
+| `BETA_SCENARIO` | bank-mocks | `slow` | Cenário do Banco Beta (veja [Bancos simulados](#bancos-simulados)). |
+| `VITE_API_URL` | web | `http://localhost:3000` | URL da API usada pelo front. |
+
+As URLs da API não têm padrão no código, para que uma configuração esquecida não aponte em silêncio para outro lugar. A API e os bancos simulados validam as variáveis na subida e, se alguma faltar ou for inválida, encerram com uma mensagem que a nomeia:
+
+```text
+Configuração inválida da API. ALPHA_BASE_URL: variável obrigatória
+Configuração inválida dos mocks bancários. BETA_SCENARIO: use um destes valores: ok, slow, unavailable, invalid
+```
+
+### Build de produção
+
+```bash
+npm run build
+cp api/.env.example api/.env
+npm start -w @consignado/api
+npm start -w @consignado/bank-mocks
+npm run preview -w @consignado/web -- --port 5173
+```
+
+Rode cada `start` e o `preview` num terminal próprio. O `--port 5173` é necessário porque o `vite preview` usa a porta 4173 por padrão, e a API só aceita a origem do `WEB_ORIGIN`. O `VITE_API_URL` entra no código do front durante o build: para apontar para outra API, defina-o antes do `npm run build`.
 
 ### Scripts
 
