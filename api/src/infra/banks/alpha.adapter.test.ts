@@ -1,4 +1,4 @@
-import { fictitiousCpfs } from '@consignado/shared/fixtures';
+import { fictitiousCnpjs, fictitiousCpfs } from '@consignado/shared/fixtures';
 import nock from 'nock';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { connectionRefused, replyAfter } from '../nock-replies';
@@ -10,6 +10,7 @@ const QUOTE_ID = '6f1c2a4e-8b3d-4f5a-9c7e-1d2b3a4c5e6f';
 
 const request = {
   cpf: fictitiousCpfs[0].digits,
+  employerCnpj: fictitiousCnpjs[0].digits,
   amountCents: 1000000,
   termMonths: 24,
 };
@@ -34,14 +35,14 @@ describe('AlphaAdapter', () => {
     expect(adapter.bankName).toBe('Banco Alpha');
   });
 
-  it('traduz a requisição para o contrato do Alpha e a taxa decimal para a taxa canônica', async () => {
+  it('traduz a requisição para o contrato do Alpha, sem o CNPJ, e a taxa decimal para a taxa canônica', async () => {
     const scope = nock(BASE_URL)
       .post(ROUTE, {
         document: fictitiousCpfs[0].digits,
         amountCents: 1000000,
         termMonths: 24,
       })
-      .reply(200, { quoteId: QUOTE_ID, annualInterestRate: '0.24' });
+      .reply(200, { quoteId: QUOTE_ID, decision: 'approved', annualInterestRate: '0.24' });
 
     const result = await quote();
 
@@ -51,19 +52,47 @@ describe('AlphaAdapter', () => {
   });
 
   it('ignora campos extras na resposta do Alpha', async () => {
-    nock(BASE_URL)
-      .post(ROUTE)
-      .reply(200, { quoteId: QUOTE_ID, annualInterestRate: '0.26', validUntil: '2026-12-31' });
+    nock(BASE_URL).post(ROUTE).reply(200, {
+      quoteId: QUOTE_ID,
+      decision: 'approved',
+      annualInterestRate: '0.26',
+      validUntil: '2026-12-31',
+    });
 
     const result = await quote();
 
     expect(result.status === 'success' && result.annualRate.toString()).toBe('0.26');
   });
 
+  it('traduz a recusa por valor acima do limite', async () => {
+    nock(BASE_URL)
+      .post(ROUTE)
+      .reply(200, { quoteId: QUOTE_ID, decision: 'declined', reasonCode: 'AMOUNT_ABOVE_LIMIT' });
+
+    expect(await quote()).toEqual({ status: 'rejected', reason: 'amount-above-limit' });
+  });
+
+  it.each(['CREDIT_POLICY', 'constructor'])(
+    'trata o motivo desconhecido %s como recusa sem motivo conhecido',
+    async (reasonCode) => {
+      nock(BASE_URL)
+        .post(ROUTE)
+        .reply(200, { quoteId: QUOTE_ID, decision: 'declined', reasonCode });
+
+      expect(await quote()).toEqual({ status: 'rejected', reason: 'other' });
+    },
+  );
+
   it('devolve timeout e aborta a requisição quando o tempo limite estoura', async () => {
     nock(BASE_URL)
       .post(ROUTE)
-      .reply(replyAfter(500, 200, { quoteId: QUOTE_ID, annualInterestRate: '0.24' }));
+      .reply(
+        replyAfter(500, 200, {
+          quoteId: QUOTE_ID,
+          decision: 'approved',
+          annualInterestRate: '0.24',
+        }),
+      );
     const signal = AbortSignal.timeout(50);
     let aborted = false;
     signal.addEventListener('abort', () => {
@@ -100,11 +129,20 @@ describe('AlphaAdapter', () => {
   });
 
   it.each([
-    ['sem taxa', { quoteId: QUOTE_ID }],
-    ['com taxa numérica', { quoteId: QUOTE_ID, annualInterestRate: 0.24 }],
-    ['com taxa em texto livre', { quoteId: QUOTE_ID, annualInterestRate: '24%' }],
-    ['com taxa negativa', { quoteId: QUOTE_ID, annualInterestRate: '-0.01' }],
-    ['com taxa acima de 1000% a.a.', { quoteId: QUOTE_ID, annualInterestRate: '10.01' }],
+    ['sem decisão', { quoteId: QUOTE_ID, annualInterestRate: '0.24' }],
+    ['com decisão desconhecida', { quoteId: QUOTE_ID, decision: 'pending' }],
+    ['recusada sem motivo', { quoteId: QUOTE_ID, decision: 'declined' }],
+    ['sem taxa', { quoteId: QUOTE_ID, decision: 'approved' }],
+    ['com taxa numérica', { quoteId: QUOTE_ID, decision: 'approved', annualInterestRate: 0.24 }],
+    [
+      'com taxa em texto livre',
+      { quoteId: QUOTE_ID, decision: 'approved', annualInterestRate: '24%' },
+    ],
+    ['com taxa negativa', { quoteId: QUOTE_ID, decision: 'approved', annualInterestRate: '-0.01' }],
+    [
+      'com taxa acima de 1000% a.a.',
+      { quoteId: QUOTE_ID, decision: 'approved', annualInterestRate: '10.01' },
+    ],
   ])('devolve invalid-response para uma resposta %s', async (_case, body) => {
     nock(BASE_URL).post(ROUTE).reply(200, body);
 

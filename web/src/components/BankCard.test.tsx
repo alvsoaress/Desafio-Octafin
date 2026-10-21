@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import {
   betaInvalidResponse,
+  betaRejected,
   betaTimeout,
   betaUnavailable,
   overMarginResponse,
@@ -65,6 +66,17 @@ describe('BankCard', () => {
     expect(screen.getByRole('heading', { name: 'Banco Beta' })).toBeInTheDocument();
     expect(screen.getByText(message)).toBeInTheDocument();
     expect(screen.queryByText('Parcela')).not.toBeInTheDocument();
+  });
+
+  it('na recusa do banco, mostra "Reprovado" e o motivo, sem oferta', () => {
+    renderCard(betaRejected, referenceResponse);
+
+    expect(screen.getByText('Reprovado')).toBeInTheDocument();
+    expect(
+      screen.getByText('O Banco Beta não tem convênio com o seu empregador.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Parcela')).not.toBeInTheDocument();
+    expect(screen.queryByText('Sem resposta')).not.toBeInTheDocument();
   });
 
   it('fora da margem, mostra a parcela máxima e o valor financiável', () => {

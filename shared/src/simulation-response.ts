@@ -30,7 +30,21 @@ export const offerSchema = z
     path: ['withinMargin'],
   });
 
-export const bankStatusSchema = z.enum(['success', 'timeout', 'unavailable', 'invalid-response']);
+export const bankStatusSchema = z.enum([
+  'success',
+  'rejected',
+  'timeout',
+  'unavailable',
+  'invalid-response',
+]);
+
+export const rejectionReasonSchema = z.enum([
+  'amount-above-limit',
+  'employer-not-covered',
+  'other',
+]);
+
+const failureStatusSchema = bankStatusSchema.exclude(['success', 'rejected']);
 
 const bankIdentity = {
   bankId: z.string().min(1),
@@ -43,12 +57,21 @@ const successResultSchema = z.strictObject({
   offer: offerSchema,
 });
 
+const rejectedResultSchema = z.strictObject({
+  ...bankIdentity,
+  status: z.literal('rejected'),
+  rejection: z.strictObject({
+    reason: rejectionReasonSchema,
+    message: z.string().min(1),
+  }),
+});
+
 const failureResultSchema = z
   .strictObject({
     ...bankIdentity,
-    status: bankStatusSchema.exclude(['success']),
+    status: failureStatusSchema,
     error: z.strictObject({
-      code: bankStatusSchema.exclude(['success']),
+      code: failureStatusSchema,
       message: z.string().min(1),
     }),
   })
@@ -59,8 +82,13 @@ const failureResultSchema = z
 
 export const bankResultSchema = z.discriminatedUnion('status', [
   successResultSchema,
+  rejectedResultSchema,
   failureResultSchema,
 ]);
+
+export function bankResponded(result: { status: BankStatus }): boolean {
+  return result.status === 'success' || result.status === 'rejected';
+}
 
 export const simulationResponseSchema = z
   .strictObject({
@@ -104,11 +132,10 @@ export const simulationResponseSchema = z
         });
       }),
   })
-  .refine(
-    (response) =>
-      response.partial === response.results.some((result) => result.status !== 'success'),
-    { error: 'partial deve ser verdadeiro só quando algum banco falhou.', path: ['partial'] },
-  )
+  .refine((response) => response.partial === !response.results.every(bankResponded), {
+    error: 'partial deve ser verdadeiro só quando algum banco não respondeu.',
+    path: ['partial'],
+  })
   .superRefine(({ margin, request, results }, context) => {
     results.forEach((result, index) => {
       if (result.status !== 'success') {
@@ -151,5 +178,6 @@ export const simulationResponseSchema = z
 
 export type Offer = z.infer<typeof offerSchema>;
 export type BankStatus = z.infer<typeof bankStatusSchema>;
+export type BankRejectionReason = z.infer<typeof rejectionReasonSchema>;
 export type BankResult = z.infer<typeof bankResultSchema>;
 export type SimulationResponse = z.infer<typeof simulationResponseSchema>;

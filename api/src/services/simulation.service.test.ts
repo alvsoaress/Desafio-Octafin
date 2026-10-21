@@ -10,7 +10,12 @@ import { describe, expect, it, vi } from 'vitest';
 import type { BankAdapter, BankQuoteRequest, BankQuoteResult } from '../domain/bank-adapter';
 import { calculateOffer } from '../domain/loan';
 import { Decimal } from '../domain/money';
-import { bankErrorMessage, SimulationService, type Logger } from './simulation.service';
+import {
+  bankErrorMessage,
+  bankRejectionMessage,
+  SimulationService,
+  type Logger,
+} from './simulation.service';
 
 const CPF = fictitiousCpfs[0];
 
@@ -76,7 +81,45 @@ describe('bankErrorMessage', () => {
   });
 });
 
+describe('bankRejectionMessage', () => {
+  it.each([
+    ['amount-above-limit', 'O Banco Alpha não aprova esse valor. Tente um valor menor.'],
+    ['employer-not-covered', 'O Banco Alpha não tem convênio com o seu empregador.'],
+    ['other', 'O Banco Alpha recusou a proposta.'],
+  ] as const)('dá a mensagem do motivo %s', (reason, message) => {
+    expect(bankRejectionMessage('Banco Alpha', reason)).toBe(message);
+  });
+});
+
 describe('SimulationService', () => {
+  it('devolve a recusa do banco com o motivo, sem marcar o resultado como parcial', async () => {
+    const response = await createService([
+      fakeAdapter('alpha', respondsWith(success('0.24'))),
+      fakeAdapter('beta', respondsWith({ status: 'rejected', reason: 'employer-not-covered' })),
+    ]).simulate(simulationRequest(), randomUUID());
+
+    expect(response.partial).toBe(false);
+    expect(response.results[1]).toEqual({
+      bankId: 'beta',
+      bankName: 'Banco Beta',
+      status: 'rejected',
+      rejection: {
+        reason: 'employer-not-covered',
+        message: 'O Banco Beta não tem convênio com o seu empregador.',
+      },
+    });
+  });
+
+  it('marca o resultado como parcial quando um banco recusa e outro não responde', async () => {
+    const response = await createService([
+      fakeAdapter('alpha', respondsWith({ status: 'rejected', reason: 'amount-above-limit' })),
+      fakeAdapter('beta', respondsWith({ status: 'timeout' })),
+    ]).simulate(simulationRequest(), randomUUID());
+
+    expect(response.partial).toBe(true);
+    expect(response.results.map((result) => result.status)).toEqual(['rejected', 'timeout']);
+  });
+
   it('monta a resposta com as ofertas de todos os bancos', async () => {
     const requestId = randomUUID();
     const service = createService([
@@ -141,13 +184,18 @@ describe('SimulationService', () => {
     expect(performance.now() - startedAt).toBeLessThan(190);
   });
 
-  it('envia ao banco só o CPF sem máscara, o valor e o prazo, sem nome, e-mail nem salário', async () => {
+  it('envia ao banco só o CPF e o CNPJ sem máscara, o valor e o prazo, sem nome, e-mail nem salário', async () => {
     const alpha = fakeAdapter('alpha', respondsWith(success('0.24')));
 
     await createService([alpha]).simulate(simulationRequest(), randomUUID());
 
     expect(alpha.quote).toHaveBeenCalledWith(
-      { cpf: CPF.digits, amountCents: 1000000, termMonths: 24 },
+      {
+        cpf: CPF.digits,
+        employerCnpj: fictitiousCnpjs[0].digits,
+        amountCents: 1000000,
+        termMonths: 24,
+      },
       expect.any(AbortSignal),
     );
   });

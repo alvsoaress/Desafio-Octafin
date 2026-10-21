@@ -1,4 +1,10 @@
-import type { BankResult, SimulationRequest, SimulationResponse } from '@consignado/shared';
+import {
+  bankResponded,
+  type BankRejectionReason,
+  type BankResult,
+  type SimulationRequest,
+  type SimulationResponse,
+} from '@consignado/shared';
 import type {
   BankAdapter,
   BankFailureStatus,
@@ -28,6 +34,16 @@ export function bankErrorMessage(bankName: string, status: BankFailureStatus): s
   return bankErrorMessages[status](bankName);
 }
 
+const bankRejectionMessages: Record<BankRejectionReason, (bankName: string) => string> = {
+  'amount-above-limit': (bankName) => `O ${bankName} não aprova esse valor. Tente um valor menor.`,
+  'employer-not-covered': (bankName) => `O ${bankName} não tem convênio com o seu empregador.`,
+  other: (bankName) => `O ${bankName} recusou a proposta.`,
+};
+
+export function bankRejectionMessage(bankName: string, reason: BankRejectionReason): string {
+  return bankRejectionMessages[reason](bankName);
+}
+
 export class SimulationService {
   readonly #adapters: readonly BankAdapter[];
   readonly #timeoutMs: number;
@@ -43,6 +59,7 @@ export class SimulationService {
     const margin = calculateMargin(request);
     const quoteRequest: BankQuoteRequest = {
       cpf: request.cpf,
+      employerCnpj: request.employerCnpj,
       amountCents: request.requestedAmountCents,
       termMonths: request.termMonths,
     };
@@ -57,7 +74,7 @@ export class SimulationService {
 
     return {
       requestId,
-      partial: results.some((result) => result.status !== 'success'),
+      partial: !results.every(bankResponded),
       margin,
       request: {
         requestedAmountCents: request.requestedAmountCents,
@@ -133,6 +150,17 @@ function toBankResult(
         annualRate: quote.annualRate,
         availableMarginCents,
       }),
+    };
+  }
+
+  if (quote.status === 'rejected') {
+    return {
+      ...identity,
+      status: 'rejected',
+      rejection: {
+        reason: quote.reason,
+        message: bankRejectionMessage(adapter.bankName, quote.reason),
+      },
     };
   }
 

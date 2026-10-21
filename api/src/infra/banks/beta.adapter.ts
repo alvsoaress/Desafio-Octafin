@@ -1,8 +1,9 @@
+import type { BankRejectionReason } from '@consignado/shared';
 import { z } from 'zod';
 import type { BankAdapter, BankQuoteRequest, BankQuoteResult } from '../../domain/bank-adapter';
 import { Decimal } from '../../domain/money';
 import { postJson } from '../http-client';
-import { toQuoteResult } from './to-quote-result';
+import { toQuoteResult, type BankReply } from './to-quote-result';
 
 export type BetaAdapterOptions = {
   baseUrl: string;
@@ -11,18 +12,44 @@ export type BetaAdapterOptions = {
 const CENTS_PER_REAL = 100;
 const PERCENT = 100;
 
-const betaResponseSchema = z.object({
+const HTTP_OK = 200;
+const HTTP_UNPROCESSABLE = 422;
+
+const betaQuoteSchema = z.object({
   taxaAnualPercentual: z.string().regex(/^-?\d+(\.\d+)?$/),
 });
+
+const betaRefusalSchema = z.object({
+  erro: z.string(),
+});
+
+const betaReasons = new Map<string, BankRejectionReason>([
+  ['empregador_sem_convenio', 'employer-not-covered'],
+]);
 
 function centsToReais(cents: number): string {
   return new Decimal(cents).div(CENTS_PER_REAL).toFixed(2);
 }
 
-function readAnnualRate(body: unknown): Decimal | null {
-  const result = betaResponseSchema.safeParse(body);
+function readReply({ status, body }: BankReply): BankQuoteResult | null {
+  if (status === HTTP_UNPROCESSABLE) {
+    const refusal = betaRefusalSchema.safeParse(body);
 
-  return result.success ? new Decimal(result.data.taxaAnualPercentual).div(PERCENT) : null;
+    return refusal.success
+      ? { status: 'rejected', reason: betaReasons.get(refusal.data.erro) ?? 'other' }
+      : null;
+  }
+
+  const quote = betaQuoteSchema.safeParse(body);
+
+  if (status !== HTTP_OK || !quote.success) {
+    return null;
+  }
+
+  return {
+    status: 'success',
+    annualRate: new Decimal(quote.data.taxaAnualPercentual).div(PERCENT),
+  };
 }
 
 export class BetaAdapter implements BankAdapter {
@@ -39,12 +66,13 @@ export class BetaAdapter implements BankAdapter {
       this.#url,
       {
         cpf: request.cpf,
+        cnpjEmpregador: request.employerCnpj,
         valor: centsToReais(request.amountCents),
         prazoMeses: request.termMonths,
       },
       signal,
     );
 
-    return toQuoteResult(result, readAnnualRate);
+    return toQuoteResult(result, readReply);
   }
 }

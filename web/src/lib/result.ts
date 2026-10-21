@@ -1,8 +1,12 @@
-import type { BankResult } from '@consignado/shared';
+import { bankResponded, type BankResult } from '@consignado/shared';
 
 export type BankOutcome = 'approved' | 'rejected' | 'no-response';
 
 export function bankOutcome(result: BankResult): BankOutcome {
+  if (result.status === 'rejected') {
+    return 'rejected';
+  }
+
   if (result.status !== 'success') {
     return 'no-response';
   }
@@ -32,5 +36,5 @@ export function lowestInstallmentBankId(results: readonly BankResult[]): string 
 }
 
 export function allBanksFailed(results: readonly BankResult[]): boolean {
-  return results.every((result) => result.status !== 'success');
+  return !results.some(bankResponded);
 }

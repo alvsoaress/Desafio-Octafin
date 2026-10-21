@@ -1,16 +1,19 @@
-import type { BankStatus } from '@consignado/shared';
+import type { BankRejectionReason, BankStatus } from '@consignado/shared';
 import type { Decimal } from './money';
 
 export type BankQuoteRequest = {
   cpf: string;
+  employerCnpj: string;
   amountCents: number;
   termMonths: number;
 };
 
-export type BankFailureStatus = Exclude<BankStatus, 'success'>;
+export type BankFailureStatus = Exclude<BankStatus, 'success' | 'rejected'>;
 
 export type BankQuoteResult =
-  { status: Extract<BankStatus, 'success'>; annualRate: Decimal } | { status: BankFailureStatus };
+  | { status: Extract<BankStatus, 'success'>; annualRate: Decimal }
+  | { status: Extract<BankStatus, 'rejected'>; reason: BankRejectionReason }
+  | { status: BankFailureStatus };
 
 export interface BankAdapter {
   readonly bankId: string;

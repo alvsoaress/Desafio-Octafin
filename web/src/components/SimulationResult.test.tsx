@@ -4,6 +4,8 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import {
   allFailedResponse,
+  allRejectedResponse,
+  betaRejectedResponse,
   bothSuccessResponse,
   oneApprovedResponse,
   overMarginResponse,
@@ -79,6 +81,21 @@ describe('SimulationResult', () => {
     await userEvent.setup().click(screen.getByRole('button', { name: 'Simular de novo' }));
 
     expect(onRetry).toHaveBeenCalledOnce();
+  });
+
+  it('com um banco recusando, não mostra o aviso parcial', () => {
+    renderResult(betaRejectedResponse);
+
+    expect(screen.queryByText(partialNotice)).not.toBeInTheDocument();
+    expect(cardOf('Banco Beta').getByText('Reprovado')).toBeInTheDocument();
+  });
+
+  it('com todos os bancos recusando, não pede para tentar de novo', () => {
+    renderResult(allRejectedResponse);
+
+    expect(screen.queryByText(noBankNotice)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Simular de novo' })).not.toBeInTheDocument();
+    expect(screen.getAllByText('Reprovado')).toHaveLength(2);
   });
 
   it('com algum banco respondendo, não mostra o botão de repetir', () => {

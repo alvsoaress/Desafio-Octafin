@@ -1,15 +1,22 @@
-import { fictitiousCpfs } from '@consignado/shared/fixtures';
+import { fictitiousCnpjs, fictitiousCpfs } from '@consignado/shared/fixtures';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
-import { BETA_SLOW_DELAY_MS, createBetaApp, type BetaOptions } from './beta';
+import {
+  BETA_PARTNER_EMPLOYERS,
+  BETA_SLOW_DELAY_MS,
+  createBetaApp,
+  type BetaOptions,
+} from './beta';
 import { BETA_SCENARIOS } from './config';
 
 const cpf = fictitiousCpfs[0];
+const [partnerCnpj, otherPartnerCnpj, outsiderCnpj] = fictitiousCnpjs;
 
 const silentLog = () => {};
 
 const validBody = {
   cpf: cpf.digits,
+  cnpjEmpregador: partnerCnpj.digits,
   valor: '10000.00',
   prazoMeses: 24,
 };
@@ -41,6 +48,9 @@ describe('POST /api/simulacao', () => {
       ['CPF com máscara', { cpf: cpf.masked }],
       ['CPF com dígito verificador errado', { cpf: '38192746501' }],
       ['CPF ausente', { cpf: undefined }],
+      ['CNPJ com máscara', { cnpjEmpregador: partnerCnpj.masked }],
+      ['CNPJ com dígito verificador errado', { cnpjEmpregador: '47182936000145' }],
+      ['CNPJ ausente', { cnpjEmpregador: undefined }],
       ['valor como número', { valor: 10000 }],
       ['valor com vírgula', { valor: '10000,00' }],
       ['valor sem centavos', { valor: '10000' }],
@@ -55,6 +65,24 @@ describe('POST /api/simulacao', () => {
       expect(response.status).toBe(400);
       expect(response.body).toEqual({ erro: 'requisicao_invalida' });
       expect(response.text).not.toContain(cpf.digits);
+    });
+
+    it('tem convênio só com os dois primeiros empregadores fictícios', () => {
+      expect([...BETA_PARTNER_EMPLOYERS]).toEqual([partnerCnpj.digits, otherPartnerCnpj.digits]);
+    });
+
+    it('recusa com HTTP 422 o empregador sem convênio, sem taxa', async () => {
+      const response = await postSimulation(
+        { ...validBody, cnpjEmpregador: outsiderCnpj.digits },
+        { scenario: 'ok' },
+      );
+      const body = response.body as { codigo: string; erro: string };
+
+      expect(response.status).toBe(422);
+      expect(Object.keys(body).sort()).toEqual(['codigo', 'erro']);
+      expect(body.erro).toBe('empregador_sem_convenio');
+      expect(body.codigo).toMatch(uuidPattern);
+      expect(response.text).not.toContain(outsiderCnpj.digits);
     });
 
     it('recusa JSON malformado com HTTP 400', async () => {

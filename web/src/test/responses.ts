@@ -151,3 +151,40 @@ export const allFailedResponse: SimulationResponse = {
     betaTimeout,
   ],
 };
+
+export const betaRejected: BankResult = {
+  bankId: 'beta',
+  bankName: 'Banco Beta',
+  status: 'rejected',
+  rejection: {
+    reason: 'employer-not-covered',
+    message: 'O Banco Beta não tem convênio com o seu empregador.',
+  },
+};
+
+export const betaRejectedResponse: SimulationResponse = {
+  requestId,
+  partial: false,
+  margin: { consignableCents: 175000, availableCents: 125000 },
+  request,
+  results: [success('alpha', alphaOffer), betaRejected],
+};
+
+export const allRejectedResponse: SimulationResponse = {
+  requestId,
+  partial: false,
+  margin: { consignableCents: 175000, availableCents: 125000 },
+  request,
+  results: [
+    {
+      bankId: 'alpha',
+      bankName: 'Banco Alpha',
+      status: 'rejected',
+      rejection: {
+        reason: 'amount-above-limit',
+        message: 'O Banco Alpha não aprova esse valor. Tente um valor menor.',
+      },
+    },
+    betaRejected,
+  ],
+};

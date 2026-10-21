@@ -1,21 +1,37 @@
+import type { BankRejectionReason } from '@consignado/shared';
 import { z } from 'zod';
 import type { BankAdapter, BankQuoteRequest, BankQuoteResult } from '../../domain/bank-adapter';
 import { Decimal } from '../../domain/money';
 import { postJson } from '../http-client';
-import { toQuoteResult } from './to-quote-result';
+import { toQuoteResult, type BankReply } from './to-quote-result';
 
 export type AlphaAdapterOptions = {
   baseUrl: string;
 };
 
-const alphaResponseSchema = z.object({
-  annualInterestRate: z.string().regex(/^-?\d+(\.\d+)?$/),
-});
+const rateText = z.string().regex(/^-?\d+(\.\d+)?$/);
 
-function readAnnualRate(body: unknown): Decimal | null {
+const alphaResponseSchema = z.discriminatedUnion('decision', [
+  z.object({ decision: z.literal('approved'), annualInterestRate: rateText }),
+  z.object({ decision: z.literal('declined'), reasonCode: z.string() }),
+]);
+
+const alphaReasons = new Map<string, BankRejectionReason>([
+  ['AMOUNT_ABOVE_LIMIT', 'amount-above-limit'],
+]);
+
+function readReply({ status, body }: BankReply): BankQuoteResult | null {
   const result = alphaResponseSchema.safeParse(body);
 
-  return result.success ? new Decimal(result.data.annualInterestRate) : null;
+  if (status !== 200 || !result.success) {
+    return null;
+  }
+
+  if (result.data.decision === 'declined') {
+    return { status: 'rejected', reason: alphaReasons.get(result.data.reasonCode) ?? 'other' };
+  }
+
+  return { status: 'success', annualRate: new Decimal(result.data.annualInterestRate) };
 }
 
 export class AlphaAdapter implements BankAdapter {
@@ -38,6 +54,6 @@ export class AlphaAdapter implements BankAdapter {
       signal,
     );
 
-    return toQuoteResult(result, readAnnualRate);
+    return toQuoteResult(result, readReply);
   }
 }

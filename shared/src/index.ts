@@ -10,11 +10,14 @@ export {
   type SimulationRequestInput,
 } from './simulation-request';
 export {
+  bankResponded,
   bankResultSchema,
   bankStatusSchema,
   offerSchema,
   rateSchema,
+  rejectionReasonSchema,
   simulationResponseSchema,
+  type BankRejectionReason,
   type BankResult,
   type BankStatus,
   type Offer,

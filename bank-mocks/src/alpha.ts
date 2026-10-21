@@ -11,6 +11,7 @@ export type AlphaOptions = {
 };
 
 const ALPHA_DEFAULT_DELAY_MS = 100;
+export const ALPHA_MAX_AMOUNT_CENTS = 10_000_000;
 
 const alphaRequestSchema = z.strictObject({
   document: z
@@ -59,8 +60,18 @@ export function createAlphaApp({
       return;
     }
 
+    if (result.data.amountCents > ALPHA_MAX_AMOUNT_CENTS) {
+      response.json({
+        quoteId: randomUUID(),
+        decision: 'declined',
+        reasonCode: 'AMOUNT_ABOVE_LIMIT',
+      });
+      return;
+    }
+
     response.json({
       quoteId: randomUUID(),
+      decision: 'approved',
       annualInterestRate: alphaRateForTerm(result.data.termMonths),
     });
   });

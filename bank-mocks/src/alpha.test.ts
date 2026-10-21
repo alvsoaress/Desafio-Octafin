@@ -1,7 +1,7 @@
 import { fictitiousCpfs } from '@consignado/shared/fixtures';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
-import { alphaRateForTerm, createAlphaApp } from './alpha';
+import { ALPHA_MAX_AMOUNT_CENTS, alphaRateForTerm, createAlphaApp } from './alpha';
 
 const cpf = fictitiousCpfs[0];
 
@@ -15,7 +15,12 @@ const validBody = {
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
-type AlphaQuote = { quoteId: string; annualInterestRate: string };
+type AlphaQuote = {
+  quoteId: string;
+  decision: string;
+  annualInterestRate?: string;
+  reasonCode?: string;
+};
 
 function postQuote(body: unknown) {
   return request(createAlphaApp({ delayMs: 0, log: silentLog }))
@@ -52,8 +57,27 @@ describe('POST /v1/loan-quotes', () => {
     const body = response.body as AlphaQuote;
 
     expect(response.status).toBe(200);
-    expect(Object.keys(body).sort()).toEqual(['annualInterestRate', 'quoteId']);
+    expect(Object.keys(body).sort()).toEqual(['annualInterestRate', 'decision', 'quoteId']);
+    expect(body.decision).toBe('approved');
     expect(body.annualInterestRate).toBe(rate);
+    expect(body.quoteId).toMatch(uuidPattern);
+  });
+
+  it('aprova o valor igual ao limite de R$ 100.000,00', async () => {
+    const body = await quote({ ...validBody, amountCents: ALPHA_MAX_AMOUNT_CENTS });
+
+    expect(ALPHA_MAX_AMOUNT_CENTS).toBe(10_000_000);
+    expect(body.decision).toBe('approved');
+  });
+
+  it('recusa com HTTP 200 o valor acima do limite, sem taxa', async () => {
+    const response = await postQuote({ ...validBody, amountCents: ALPHA_MAX_AMOUNT_CENTS + 1 });
+    const body = response.body as AlphaQuote;
+
+    expect(response.status).toBe(200);
+    expect(Object.keys(body).sort()).toEqual(['decision', 'quoteId', 'reasonCode']);
+    expect(body.decision).toBe('declined');
+    expect(body.reasonCode).toBe('AMOUNT_ABOVE_LIMIT');
     expect(body.quoteId).toMatch(uuidPattern);
   });
 

@@ -1,4 +1,4 @@
-import { fictitiousCpfs } from '@consignado/shared/fixtures';
+import { fictitiousCnpjs, fictitiousCpfs } from '@consignado/shared/fixtures';
 import nock from 'nock';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { calculateOffer } from '../../domain/loan';
@@ -11,6 +11,7 @@ const CODE = '2a9d4c1e-7f3b-4e6a-8d5c-9b1a2c3d4e5f';
 
 const request = {
   cpf: fictitiousCpfs[1].digits,
+  employerCnpj: fictitiousCnpjs[1].digits,
   amountCents: 1000000,
   termMonths: 24,
 };
@@ -40,15 +41,23 @@ describe('BetaAdapter', () => {
     [50001, '500.01'],
     [50000, '500.00'],
     [50000000, '500000.00'],
-  ])('envia %i centavos como valor "%s" no contrato do Beta', async (amountCents, valor) => {
-    const scope = nock(BASE_URL)
-      .post(ROUTE, { cpf: fictitiousCpfs[1].digits, valor, prazoMeses: 24 })
-      .reply(200, { codigo: CODE, taxaAnualPercentual: '21.50' });
+  ])(
+    'envia o CNPJ e %i centavos como valor "%s" no contrato do Beta',
+    async (amountCents, valor) => {
+      const scope = nock(BASE_URL)
+        .post(ROUTE, {
+          cpf: fictitiousCpfs[1].digits,
+          cnpjEmpregador: fictitiousCnpjs[1].digits,
+          valor,
+          prazoMeses: 24,
+        })
+        .reply(200, { codigo: CODE, taxaAnualPercentual: '21.50' });
 
-    await adapter.quote({ ...request, amountCents }, AbortSignal.timeout(1000));
+      await adapter.quote({ ...request, amountCents }, AbortSignal.timeout(1000));
 
-    expect(scope.isDone()).toBe(true);
-  });
+      expect(scope.isDone()).toBe(true);
+    },
+  );
 
   it('traduz a taxa percentual do Beta para a taxa canônica decimal', async () => {
     nock(BASE_URL).post(ROUTE).reply(200, { codigo: CODE, taxaAnualPercentual: '21.50' });
@@ -80,6 +89,27 @@ describe('BetaAdapter', () => {
     const result = await quote();
 
     expect(result.status === 'success' && result.annualRate.toString()).toBe('0.199');
+  });
+
+  it('traduz a recusa por empregador sem convênio', async () => {
+    nock(BASE_URL).post(ROUTE).reply(422, { codigo: CODE, erro: 'empregador_sem_convenio' });
+
+    expect(await quote()).toEqual({ status: 'rejected', reason: 'employer-not-covered' });
+  });
+
+  it('trata o código de recusa desconhecido como recusa sem motivo conhecido', async () => {
+    nock(BASE_URL).post(ROUTE).reply(422, { codigo: CODE, erro: 'politica_de_credito' });
+
+    expect(await quote()).toEqual({ status: 'rejected', reason: 'other' });
+  });
+
+  it.each([
+    ['sem código de erro', { codigo: CODE }],
+    ['fora de JSON', 'Unprocessable'],
+  ])('devolve unavailable para um HTTP 422 %s', async (_case, body) => {
+    nock(BASE_URL).post(ROUTE).reply(422, body);
+
+    expect(await quote()).toEqual({ status: 'unavailable' });
   });
 
   it('devolve timeout e aborta a requisição quando o tempo limite estoura', async () => {

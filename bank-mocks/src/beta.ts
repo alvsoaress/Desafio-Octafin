@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { isValidCpf } from '@consignado/shared';
+import { isValidCnpj, isValidCpf } from '@consignado/shared';
 import express, { type ErrorRequestHandler, type Express } from 'express';
 import { z } from 'zod';
 import type { BetaScenario } from './config';
@@ -17,12 +17,20 @@ export const BETA_SLOW_DELAY_MS = 10_000;
 const BETA_DEFAULT_DELAY_MS = 150;
 const BETA_ANNUAL_RATE_PERCENT = '21.50';
 const SIMULATION_ROUTE = '/api/simulacao';
+export const BETA_PARTNER_EMPLOYERS: ReadonlySet<string> = new Set([
+  '47182936000144',
+  '92057318000127',
+]);
 
 const betaRequestSchema = z.strictObject({
   cpf: z
     .string()
     .regex(/^\d{11}$/)
     .refine(isValidCpf),
+  cnpjEmpregador: z
+    .string()
+    .regex(/^\d{14}$/)
+    .refine(isValidCnpj),
   valor: z
     .string()
     .regex(/^\d+\.\d{2}$/)
@@ -56,7 +64,9 @@ export function createBetaApp({
   app.use(express.json());
 
   app.post(SIMULATION_ROUTE, async (request, response) => {
-    if (!betaRequestSchema.safeParse(request.body).success) {
+    const result = betaRequestSchema.safeParse(request.body);
+
+    if (!result.success) {
       response.status(400).json(invalidRequest);
       return;
     }
@@ -64,6 +74,11 @@ export function createBetaApp({
     const waitMs = scenario === 'slow' ? slowDelayMs : delayMs;
 
     if (!(await waitWhileOpen(response, waitMs))) {
+      return;
+    }
+
+    if (!BETA_PARTNER_EMPLOYERS.has(result.data.cnpjEmpregador)) {
+      response.status(422).json({ codigo: randomUUID(), erro: 'empregador_sem_convenio' });
       return;
     }
 

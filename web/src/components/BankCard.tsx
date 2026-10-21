@@ -57,6 +57,18 @@ function OutcomeLabel({ result }: { result: BankResult }) {
 }
 
 export function BankCard({ result, lowest, availableMarginCents, termMonths }: BankCardProps) {
+  if (result.status === 'rejected') {
+    return (
+      <article className="bank-card">
+        <div className="bank-card-header">
+          <h3>{result.bankName}</h3>
+          <OutcomeLabel result={result} />
+        </div>
+        <p>{result.rejection.message}</p>
+      </article>
+    );
+  }
+
   if (result.status !== 'success') {
     return (
       <article className="bank-card bank-card-failed">

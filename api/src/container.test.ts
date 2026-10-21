@@ -29,7 +29,7 @@ describe('createContainer', () => {
       .reply(200, { codigo: 'b-1', taxaAnualPercentual: '21.50' });
     const alpha = nock(config.alphaBaseUrl)
       .post('/v1/loan-quotes')
-      .reply(200, { quoteId: 'a-1', annualInterestRate: '0.24' });
+      .reply(200, { quoteId: 'a-1', decision: 'approved', annualInterestRate: '0.24' });
     const { simulationService } = createContainer(config);
 
     const response = await simulationService.simulate(

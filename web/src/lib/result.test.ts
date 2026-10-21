@@ -2,6 +2,9 @@ import type { BankResult } from '@consignado/shared';
 import { describe, expect, it } from 'vitest';
 import {
   allFailedResponse,
+  allRejectedResponse,
+  betaRejected,
+  betaRejectedResponse,
   betaInvalidResponse,
   betaTimeout,
   betaUnavailable,
@@ -25,6 +28,10 @@ describe('bankOutcome', () => {
     expect(bankOutcome(response.results[0]!)).toBe('rejected');
   });
 
+  it('reprova quando o próprio banco recusa', () => {
+    expect(bankOutcome(betaRejected)).toBe('rejected');
+  });
+
   it.each([
     ['timeout', betaTimeout],
     ['unavailable', betaUnavailable],
@@ -45,6 +52,7 @@ describe('lowestInstallmentBankId', () => {
     ['margem excedida', overMarginResponse],
     ['margem zero', zeroMarginResponse],
     ['todos falhando', allFailedResponse],
+    ['uma aprovada e uma recusada pelo banco', betaRejectedResponse],
   ])('com menos de duas aprovadas (%s), não escolhe nenhum', (_case, response) => {
     expect(lowestInstallmentBankId(response.results)).toBeNull();
   });
@@ -66,6 +74,7 @@ describe('allBanksFailed', () => {
     ['referenceResponse', referenceResponse, false],
     ['bothSuccessResponse', bothSuccessResponse, false],
     ['overMarginResponse', overMarginResponse, false],
+    ['allRejectedResponse', allRejectedResponse, false],
   ])('%s → %s', (_name, response, expected) => {
     expect(allBanksFailed(response.results)).toBe(expected);
   });

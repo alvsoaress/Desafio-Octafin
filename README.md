@@ -15,6 +15,17 @@ O `npm run dev` sobe o front (http://localhost:5173), a API (porta 3000) e os do
 
 Para testar na tela, use os dados fictícios de referência: nome `Maria Fictícia da Silva`, e-mail `maria.ficticia@example.com`, CPF `381.927.465-00`, CNPJ `47.182.936/0001-44`, salário `5.000,00`, descontos `500,00`, valor `10.000,00` e prazo `24`. Os dois bancos aprovam, com parcelas de R$ 517,33 (Alpha) e R$ 507,17 (Beta).
 
+### Recusas dos bancos
+
+Cada banco recusa por uma regra própria, e cada um avisa de um jeito diferente:
+
+| Banco | Recusa quando | Como avisa | Para ver na tela |
+| --- | --- | --- | --- |
+| Alpha | O valor passa de R$ 100.000,00. | HTTP 200 com `decision: "declined"` e `reasonCode`. | Valor `150.000,00`. |
+| Beta | O empregador não tem convênio com o banco. | HTTP 422 com `erro: "empregador_sem_convenio"`. | CNPJ `38.501.462/0001-65`. |
+
+O cartão do banco mostra "Reprovado" e o motivo. Um código de recusa desconhecido continua sendo recusa, com o motivo genérico.
+
 ### Cenários do Banco Beta
 
 O Beta simula falhas conforme a variável `BETA_SCENARIO`, para mostrar o resultado parcial:
@@ -55,7 +66,7 @@ curl -s -X POST localhost:3000/api/simulations \
   -d '{"name":"Maria Fictícia da Silva","email":"maria.ficticia@example.com","cpf":"38192746500","employerCnpj":"47182936000144","salaryCents":500000,"existingDeductionsCents":50000,"requestedAmountCents":1000000,"termMonths":24}'
 ```
 
-A resposta é sempre HTTP 200 quando a entrada é válida, mesmo com bancos falhando: cada banco vem em `results` com `status` (`success`, `timeout`, `unavailable` ou `invalid-response`), e `partial: true` indica que algum falhou. Entrada inválida recebe 400 com uma mensagem em português por campo; erro inesperado, 500 sem detalhes internos. Toda resposta traz um `requestId` para suporte.
+A resposta é sempre HTTP 200 quando a entrada é válida, mesmo com bancos falhando: cada banco vem em `results` com `status` (`success`, `rejected`, `timeout`, `unavailable` ou `invalid-response`), e `partial: true` indica que algum banco não respondeu. Uma recusa do banco é uma resposta e não deixa o resultado parcial. Entrada inválida recebe 400 com uma mensagem em português por campo; erro inesperado, 500 sem detalhes internos. Toda resposta traz um `requestId` para suporte.
 
 ### Testes e verificação
 
@@ -76,6 +87,7 @@ Para produção: `npm run build`, depois `npm start -w @consignado/api`, `npm st
 - **Adaptadores atrás de uma porta (`BankAdapter`).** Cada banco tem um contrato HTTP diferente, traduzido por um adaptador. Um banco novo é um adaptador e uma linha no `container.ts`, sem mexer no serviço nem nas regras.
 - **Camadas com dependências apontando para o domínio.** O domínio (margem, Price, Price inversa) é puro e não importa Express, `fetch` nem infraestrutura; o ESLint barra esses imports no `npm run lint`.
 - **Contrato da resposta com regras de consistência.** Além dos tipos, o esquema recusa números incoerentes (total diferente de parcela × prazo, margem disponível acima da consignável, banco repetido). O front recusa uma resposta assim, e os testes da API quebram se o cálculo produzir uma.
+- **Recusa do banco separada de falha técnica.** Cada adaptador traduz a recusa do seu banco para o status `rejected` com um motivo canônico (`amount-above-limit`, `employer-not-covered` ou `other`). Um 4xx ou 5xx que o adaptador não reconhece continua `unavailable`, então uma queda nunca aparece para o cliente como "Reprovado".
 - **Bancos simulados por HTTP real**, com cenários determinísticos, para que a demonstração e os testes mostrem as falhas sempre do mesmo jeito.
 - **Nome e e-mail validados, mas fora da consulta aos bancos.** A API exige nome completo e um e-mail válido, mas envia a cada banco só CPF, valor e prazo, o mínimo para a cotação. Os dois campos também passam pelo mascaramento de logs.
 - **Sem banco de dados.** O fluxo não precisa de persistência, e não guardar CPF nem salário reduz o risco de vazamento (LGPD).
@@ -88,9 +100,9 @@ Para produção: `npm run build`, depois `npm start -w @consignado/api`, `npm st
 - **Limites iniciais.** Prazo de 6 a 96 meses, valor de R$ 500,00 a R$ 500.000,00 e salário até R$ 1.000.000,00, definidos em `shared/src/simulation-request.ts`.
 - **E-mail sem verificação.** O formato é validado, mas nenhuma mensagem é enviada para confirmar o endereço.
 - **Margem sobre o salário bruto** informado pelo cliente, sem validação externa.
-- **CNPJ só numérico.** O CNPJ alfanumérico da Receita ainda é recusado. O CNPJ é validado, mas não é enviado aos bancos.
+- **CNPJ só numérico.** O CNPJ alfanumérico da Receita ainda é recusado. O CNPJ vai só para o Beta, que é o banco que o usa para conferir o convênio.
 - **Resposta única.** A tela mostra um carregamento global até o último banco responder ou estourar o tempo limite; não mostra cada banco chegando.
-- **Reprovação só por margem.** "Reprovado" quer dizer que a parcela não cabe na margem; o banco não recusa por política própria.
+- **Regras de recusa fixas.** Cada banco simulado recusa por uma regra só (teto de valor no Alpha, convênio no Beta). "Reprovado" também aparece quando o banco aprova a taxa mas a parcela não cabe na margem.
 - **Trocar o cenário do Beta exige reiniciar** os bancos simulados.
 - **Sem CI, Docker, autenticação nem limite de requisições.** A única barreira antes do merge é o `npm run check` local.
 
@@ -108,10 +120,14 @@ Cada proposta diz o problema, o que muda e o ganho para o cliente ou para o serv
   - *Problema:* o carregamento é global, mesmo quando um banco já respondeu.
   - *Proposta:* uma rota de eventos (SSE) que envia o resultado de cada banco assim que ele chega, com carregamento por cartão.
   - *Ganho:* o cliente vê a primeira oferta em centenas de milissegundos, sem esperar o banco mais lento.
-- **Custo real e recusa pelo banco** (planejadas).
-  - *Problema:* a simulação mostra só juros, e "Reprovado" vem só da margem.
-  - *Proposta:* calcular IOF, tarifas e CET no domínio, e aceitar uma recusa do próprio banco (status `rejected`) com o motivo.
-  - *Ganho:* o cliente compara pelo custo total e entende por que um banco recusou.
+- **Recusa pelo próprio banco** (feita).
+  - *Problema:* "Reprovado" vinha só da margem, e o banco não tinha como recusar por política própria.
+  - *Proposta:* cada adaptador traduz a recusa do seu banco para o status `rejected` com um motivo, e o cartão mostra o motivo em português. A recusa não se confunde com falha técnica e não deixa o resultado parcial.
+  - *Ganho:* o cliente entende por que um banco recusou e sabe que tentar de novo não muda a resposta.
+- **Custo real** (planejada).
+  - *Problema:* a simulação mostra só juros.
+  - *Proposta:* calcular IOF, tarifas e CET no domínio.
+  - *Ganho:* o cliente compara pelo custo total.
 - **CNPJ alfanumérico** (planejada).
   - *Problema:* o novo formato da Receita é recusado.
   - *Proposta:* adaptar a validação e a máscara.

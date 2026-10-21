@@ -211,6 +211,27 @@ describe('bankResultSchema', () => {
     expect(bankResultSchema.safeParse(result).success).toBe(false);
   });
 
+  it.each(['amount-above-limit', 'employer-not-covered', 'other'])(
+    'aceita a recusa do banco com o motivo %s',
+    (reason) => {
+      const result = { ...identity, status: 'rejected', rejection: { reason, message: 'Motivo.' } };
+
+      expect(bankResultSchema.safeParse(result).success).toBe(true);
+    },
+  );
+
+  it.each([
+    ['sem rejection', {}],
+    ['com motivo desconhecido', { rejection: { reason: 'credit-score', message: 'M.' } }],
+    ['sem mensagem', { rejection: { reason: 'other', message: '' } }],
+    ['com error no lugar de rejection', { error: { code: 'rejected', message: 'M.' } }],
+    ['com offer', { offer: alphaOffer, rejection: { reason: 'other', message: 'M.' } }],
+  ])('recusa rejected %s', (_case, fields) => {
+    expect(bankResultSchema.safeParse({ ...identity, status: 'rejected', ...fields }).success).toBe(
+      false,
+    );
+  });
+
   it('recusa status desconhecido', () => {
     const result = { ...identity, status: 'error', error: { code: 'error', message: 'M.' } };
 
@@ -243,6 +264,19 @@ describe('simulationResponseSchema', () => {
     const response = { ...referenceResponse, results: [referenceResponse.results[0]] };
 
     expect(simulationResponseSchema.safeParse(response).success).toBe(false);
+  });
+
+  it('trata a recusa do banco como resposta, sem resultado parcial', () => {
+    const rejected = {
+      bankId: 'beta',
+      bankName: 'Banco Beta',
+      status: 'rejected',
+      rejection: { reason: 'employer-not-covered', message: 'Sem convênio.' },
+    };
+    const response = { ...referenceResponse, results: [alphaSuccess, rejected] };
+
+    expect(simulationResponseSchema.safeParse({ ...response, partial: false }).success).toBe(true);
+    expect(simulationResponseSchema.safeParse({ ...response, partial: true }).success).toBe(false);
   });
 
   it('recusa requestId que não é UUID', () => {
