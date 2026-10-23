@@ -17,6 +17,7 @@ const HTTP_UNPROCESSABLE = 422;
 
 const betaQuoteSchema = z.object({
   taxaAnualPercentual: z.string().regex(/^-?\d+(\.\d+)?$/),
+  valorParcela: z.string().regex(/^\d+\.\d{2}$/),
 });
 
 const betaRefusalSchema = z.object({
@@ -25,10 +26,15 @@ const betaRefusalSchema = z.object({
 
 const betaReasons = new Map<string, BankRejectionReason>([
   ['empregador_sem_convenio', 'employer-not-covered'],
+  ['score_insuficiente', 'low-score'],
 ]);
 
 function centsToReais(cents: number): string {
   return new Decimal(cents).div(CENTS_PER_REAL).toFixed(2);
+}
+
+function reaisToCents(reais: string): number {
+  return new Decimal(reais).times(CENTS_PER_REAL).toNumber();
 }
 
 function readReply({ status, body }: BankReply): BankQuoteResult | null {
@@ -49,6 +55,7 @@ function readReply({ status, body }: BankReply): BankQuoteResult | null {
   return {
     status: 'success',
     annualRate: new Decimal(quote.data.taxaAnualPercentual).div(PERCENT),
+    installmentCents: reaisToCents(quote.data.valorParcela),
   };
 }
 

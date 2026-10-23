@@ -51,7 +51,7 @@ describe('BetaAdapter', () => {
           valor,
           prazoMeses: 24,
         })
-        .reply(200, { codigo: CODE, taxaAnualPercentual: '21.50' });
+        .reply(200, { codigo: CODE, taxaAnualPercentual: '21.50', valorParcela: '507.17' });
 
       await adapter.quote({ ...request, amountCents }, AbortSignal.timeout(1000));
 
@@ -59,8 +59,20 @@ describe('BetaAdapter', () => {
     },
   );
 
+  it('traduz a parcela em reais do Beta para centavos', async () => {
+    nock(BASE_URL)
+      .post(ROUTE)
+      .reply(200, { codigo: CODE, taxaAnualPercentual: '21.50', valorParcela: '507.17' });
+
+    const result = await quote();
+
+    expect(result.status === 'success' && result.installmentCents).toBe(50717);
+  });
+
   it('traduz a taxa percentual do Beta para a taxa canônica decimal', async () => {
-    nock(BASE_URL).post(ROUTE).reply(200, { codigo: CODE, taxaAnualPercentual: '21.50' });
+    nock(BASE_URL)
+      .post(ROUTE)
+      .reply(200, { codigo: CODE, taxaAnualPercentual: '21.50', valorParcela: '507.17' });
 
     const result = await quote();
 
@@ -82,9 +94,12 @@ describe('BetaAdapter', () => {
   });
 
   it('ignora campos extras na resposta do Beta', async () => {
-    nock(BASE_URL)
-      .post(ROUTE)
-      .reply(200, { codigo: CODE, taxaAnualPercentual: '19.90', validade: '2026-12-31' });
+    nock(BASE_URL).post(ROUTE).reply(200, {
+      codigo: CODE,
+      taxaAnualPercentual: '19.90',
+      valorParcela: '500.00',
+      validade: '2026-12-31',
+    });
 
     const result = await quote();
 
@@ -95,6 +110,12 @@ describe('BetaAdapter', () => {
     nock(BASE_URL).post(ROUTE).reply(422, { codigo: CODE, erro: 'empregador_sem_convenio' });
 
     expect(await quote()).toEqual({ status: 'rejected', reason: 'employer-not-covered' });
+  });
+
+  it('traduz a recusa por score insuficiente', async () => {
+    nock(BASE_URL).post(ROUTE).reply(422, { codigo: CODE, erro: 'score_insuficiente' });
+
+    expect(await quote()).toEqual({ status: 'rejected', reason: 'low-score' });
   });
 
   it('trata o código de recusa desconhecido como recusa sem motivo conhecido', async () => {
@@ -115,7 +136,13 @@ describe('BetaAdapter', () => {
   it('devolve timeout e aborta a requisição quando o tempo limite estoura', async () => {
     nock(BASE_URL)
       .post(ROUTE)
-      .reply(replyAfter(500, 200, { codigo: CODE, taxaAnualPercentual: '21.50' }));
+      .reply(
+        replyAfter(500, 200, {
+          codigo: CODE,
+          taxaAnualPercentual: '21.50',
+          valorParcela: '507.17',
+        }),
+      );
     const signal = AbortSignal.timeout(50);
     let aborted = false;
     signal.addEventListener('abort', () => {
@@ -152,10 +179,23 @@ describe('BetaAdapter', () => {
 
   it.each([
     ['sem taxa', { codigo: CODE }],
-    ['com taxa numérica', { codigo: CODE, taxaAnualPercentual: 21.5 }],
-    ['com taxa em vírgula', { codigo: CODE, taxaAnualPercentual: '21,50' }],
-    ['com taxa negativa', { codigo: CODE, taxaAnualPercentual: '-1.00' }],
-    ['com taxa acima de 1000% a.a.', { codigo: CODE, taxaAnualPercentual: '1000.01' }],
+    ['sem parcela', { codigo: CODE, taxaAnualPercentual: '21.50' }],
+    ['com parcela numérica', { codigo: CODE, taxaAnualPercentual: '21.50', valorParcela: 507.17 }],
+    [
+      'com parcela em vírgula',
+      { codigo: CODE, taxaAnualPercentual: '21.50', valorParcela: '507,17' },
+    ],
+    [
+      'com parcela sem centavos',
+      { codigo: CODE, taxaAnualPercentual: '21.50', valorParcela: '507' },
+    ],
+    ['com taxa numérica', { codigo: CODE, taxaAnualPercentual: 21.5, valorParcela: '507.17' }],
+    ['com taxa em vírgula', { codigo: CODE, taxaAnualPercentual: '21,50', valorParcela: '507.17' }],
+    ['com taxa negativa', { codigo: CODE, taxaAnualPercentual: '-1.00', valorParcela: '507.17' }],
+    [
+      'com taxa acima de 1000% a.a.',
+      { codigo: CODE, taxaAnualPercentual: '1000.01', valorParcela: '507.17' },
+    ],
   ])('devolve invalid-response para uma resposta %s', async (_case, body) => {
     nock(BASE_URL).post(ROUTE).reply(200, body);
 

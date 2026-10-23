@@ -17,14 +17,30 @@ Para testar na tela, use os dados fictícios de referência: nome `Maria Fictíc
 
 ### Recusas dos bancos
 
-Cada banco recusa por uma regra própria, e cada um avisa de um jeito diferente:
+Cada banco recusa pelas suas próprias regras, e cada um avisa de um jeito diferente:
 
 | Banco | Recusa quando | Como avisa | Para ver na tela |
 | --- | --- | --- | --- |
-| Alpha | O valor passa de R$ 100.000,00. | HTTP 200 com `decision: "declined"` e `reasonCode`. | Valor `150.000,00`. |
+| Alpha | O empregador não tem convênio com o banco. | HTTP 200 com `decision: "declined"` e `reasonCode: "EMPLOYER_NOT_COVERED"`. | CNPJ `92.057.318/0001-27`. |
+| Alpha | O valor passa de R$ 100.000,00. | HTTP 200 com `decision: "declined"` e `reasonCode: "AMOUNT_ABOVE_LIMIT"`. | Valor `150.000,00`. |
+| Alpha | O score do CPF fica abaixo de 500. | HTTP 200 com `decision: "declined"` e `reasonCode: "LOW_SCORE"`. | CPF `947.302.618-87`. |
 | Beta | O empregador não tem convênio com o banco. | HTTP 422 com `erro: "empregador_sem_convenio"`. | CNPJ `38.501.462/0001-65`. |
+| Beta | O score do CPF fica abaixo de 300. | HTTP 422 com `erro: "score_insuficiente"`. | CPF `604.158.273-53`. |
 
-O cartão do banco mostra "Reprovado" e o motivo. Um código de recusa desconhecido continua sendo recusa, com o motivo genérico.
+Cada banco tem a sua lista de convênios. O CNPJ `47.182.936/0001-44` é conveniado nos dois, o `92.057.318/0001-27` só no Beta e o `38.501.462/0001-65` só no Alpha. Os dois conferem primeiro o convênio, depois o score; o Alpha confere o limite de valor por último.
+
+O cartão do banco mostra "Reprovado" e o motivo. Um código de recusa desconhecido continua sendo recusa, com o motivo genérico. Quando o banco aprova, mas a parcela não cabe na margem, o cartão não mostra "Reprovado": mostra "Aprovado até R$ X em N meses", com o maior valor que cabe na margem no mesmo prazo, ou "Sem margem" quando a margem disponível é zero.
+
+### Score fictício pelo CPF
+
+Os bancos simulados calculam um score fictício a partir dos três dígitos do meio do CPF (de 000 a 999), sempre o mesmo para o mesmo CPF. Cada banco tem o seu corte: o Alpha recusa abaixo de 500 e cobra uma taxa maior entre 500 e 749; o Beta recusa abaixo de 300 e cobra a mesma taxa acima dele.
+
+| CPF fictício | Score | Alpha | Beta |
+| --- | --- | --- | --- |
+| `381.927.465-00` | 927 | Aprova com 24%, 26% ou 28% a.a., conforme o prazo. | Aprova com 21,5% a.a. |
+| `529.641.738-00` | 641 | Aprova com 30%, 32% ou 34% a.a., conforme o prazo. | Aprova com 21,5% a.a. |
+| `947.302.618-87` | 302 | Recusa por score. | Aprova com 21,5% a.a. |
+| `604.158.273-53` | 158 | Recusa por score. | Recusa por score. |
 
 ### Cenários do Banco Beta
 
@@ -36,7 +52,7 @@ BETA_SCENARIO=slow npm run dev
 
 | Cenário | Comportamento | O que a tela mostra para o Beta |
 | --- | --- | --- |
-| `ok` (padrão) | Responde em cerca de 150 ms. | Oferta aprovada. |
+| `ok` (padrão) | Responde em cerca de 150 ms, com a taxa e a parcela. | Oferta aprovada. |
 | `slow` | Responde depois de 10 s, acima do tempo limite de 3 s. | "Sem resposta": não respondeu a tempo. |
 | `unavailable` | Responde HTTP 503. | "Sem resposta": indisponível. |
 | `invalid` | Responde sem a taxa. | "Sem resposta": resposta ilegível. |
@@ -67,7 +83,7 @@ curl -s -X POST localhost:3000/api/simulations \
   -d '{"name":"Maria Fictícia da Silva","email":"maria.ficticia@example.com","cpf":"38192746500","employerCnpj":"47182936000144","salaryCents":500000,"existingDeductionsCents":50000,"requestedAmountCents":1000000,"termMonths":24}'
 ```
 
-A resposta é sempre HTTP 200 quando a entrada é válida, mesmo com bancos falhando: cada banco vem em `results` com `status` (`success`, `rejected`, `timeout`, `unavailable` ou `invalid-response`), e `partial: true` indica que algum banco não respondeu. Uma recusa do banco é uma resposta e não deixa o resultado parcial. Entrada inválida recebe 400 com uma mensagem em português por campo; erro inesperado, 500 sem detalhes internos. Toda resposta traz um `requestId` para suporte.
+A resposta é sempre HTTP 200 quando a entrada é válida, mesmo com bancos falhando: cada banco vem em `results` com `status` (`success`, `rejected`, `timeout`, `unavailable` ou `invalid-response`), e `partial: true` indica que algum banco não respondeu. Uma recusa do banco é uma resposta e não deixa o resultado parcial. Quando o banco informa a parcela que cobra, como o Beta, a oferta usa esse valor; se ele diferir mais de 1 centavo da Price calculada com a taxa do próprio banco, o banco vem como `invalid-response`. Entrada inválida recebe 400 com uma mensagem em português por campo; erro inesperado, 500 sem detalhes internos. Toda resposta traz um `requestId` para suporte.
 
 ### Testes e verificação
 
@@ -88,23 +104,27 @@ Para produção: `npm run build`, depois `npm start -w @consignado/api`, `npm st
 - **Adaptadores atrás de uma porta (`BankAdapter`).** Cada banco tem um contrato HTTP diferente, traduzido por um adaptador. Um banco novo é um adaptador e uma linha no `container.ts`, sem mexer no serviço nem nas regras.
 - **Camadas com dependências apontando para o domínio.** O domínio (margem, Price, Price inversa) é puro e não importa Express, `fetch` nem infraestrutura; o ESLint barra esses imports no `npm run lint`.
 - **Contrato da resposta com regras de consistência.** Além dos tipos, o esquema recusa números incoerentes (total diferente de parcela × prazo, margem disponível acima da consignável, banco repetido). O front recusa uma resposta assim, e os testes da API quebram se o cálculo produzir uma.
-- **Recusa do banco separada de falha técnica.** Cada adaptador traduz a recusa do seu banco para o status `rejected` com um motivo canônico (`amount-above-limit`, `employer-not-covered` ou `other`). Um 4xx ou 5xx que o adaptador não reconhece continua `unavailable`, então uma queda nunca aparece para o cliente como "Reprovado".
+- **Recusa do banco separada de falha técnica.** Cada adaptador traduz a recusa do seu banco para o status `rejected` com um motivo canônico (`amount-above-limit`, `employer-not-covered`, `low-score` ou `other`). Um 4xx ou 5xx que o adaptador não reconhece continua `unavailable`, então uma queda nunca aparece para o cliente como "Reprovado".
+- **Parcela do banco conferida, não recalculada.** Quando o banco informa a parcela, a API usa esse valor e confere se ele bate com a Price na taxa informada, com tolerância de 1 centavo para arredondamento. Uma divergência maior vira `invalid-response`, porque taxa e parcela contraditórias não formam uma oferta confiável. Para quem só informa a taxa, como o Alpha, a API calcula a parcela.
+- **Score e convênio dentro de cada banco simulado.** A plataforma não conhece o score nem as listas de convênio: só envia CPF e CNPJ e traduz a resposta. Assim o mesmo cliente pode ser recusado por um banco e aprovado por outro.
 - **Bancos simulados por HTTP real**, com cenários determinísticos, para que a demonstração e os testes mostrem as falhas sempre do mesmo jeito.
-- **Cada banco recebe só o que precisa.** O Alpha recebe CPF, valor e prazo; o Beta recebe também o CNPJ, que usa para conferir o convênio. Nome, e-mail, salário e descontos nunca saem da API.
+- **Cada banco recebe só o que precisa.** Os dois recebem CPF, CNPJ, valor e prazo; o CNPJ serve para conferir o convênio. Nome, e-mail, salário e descontos nunca saem da API.
 - **Nome e e-mail com finalidade declarada.** Identificam quem pediu a simulação e são o contato para a etapa de contratação, que fica fora deste MVP. Por isso são validados, mas não são guardados, não vão para os bancos e passam pelo mascaramento de logs.
 - **Sem banco de dados.** O fluxo não precisa de persistência, e não guardar CPF nem salário reduz o risco de vazamento (LGPD).
 - **Front sem bibliotecas de estilo, componentes, formulário ou máscara.** São oito campos; máscaras e formatação são funções puras em aritmética inteira, testadas sem React.
 
 ## Limitações
 
-- **Bancos simulados.** Alpha e Beta são mocks com taxa fixa por faixa de prazo; não há integração com bancos reais nem consulta de margem em órgão pagador.
+- **Bancos simulados.** Alpha e Beta são mocks com taxa por faixa de prazo e de score; não há integração com bancos reais nem consulta de margem em órgão pagador.
+- **Score fictício.** O score sai dos dígitos do CPF, só para a demonstração; não há consulta a birô de crédito.
 - **Só juros.** A simulação não inclui CET, IOF nem seguro prestamista, então o custo real do empréstimo é maior que o mostrado.
 - **Limites iniciais.** Prazo de 6 a 96 meses, valor de R$ 500,00 a R$ 500.000,00 e salário até R$ 1.000.000,00, definidos em `shared/src/simulation-request.ts`.
 - **E-mail sem verificação.** O formato é validado, mas nenhuma mensagem é enviada para confirmar o endereço.
 - **Margem sobre o salário bruto** informado pelo cliente, sem validação externa.
-- **CNPJ só numérico.** O CNPJ alfanumérico da Receita ainda é recusado. O CNPJ vai só para o Beta, que é o banco que o usa para conferir o convênio.
+- **CNPJ só numérico.** O CNPJ alfanumérico da Receita ainda é recusado.
 - **Resposta única.** A tela mostra um carregamento global até o último banco responder ou estourar o tempo limite; não mostra cada banco chegando.
-- **Regras de recusa fixas.** Cada banco simulado recusa por uma regra só (teto de valor no Alpha, convênio no Beta). "Reprovado" também aparece quando o banco aprova a taxa mas a parcela não cabe na margem.
+- **Regras de recusa fixas.** Os bancos simulados recusam por convênio e por score (os dois, com listas e cortes diferentes) e por teto de valor (só o Alpha).
+- **Só o Beta informa a parcela.** A parcela do Alpha continua calculada pela plataforma a partir da taxa.
 - **Trocar o cenário do Beta exige reiniciar** os bancos simulados.
 - **Sem CI, Docker, autenticação nem limite de requisições.** A única barreira antes do merge é o `npm run check` local.
 
@@ -120,29 +140,37 @@ Cada proposta segue o formato **Problema**, **Proposta** e **Por quê**, e o **P
    - *Por quê (uso pelo cliente e infraestrutura):* o cliente espera no máximo o tempo limite e vê as ofertas que chegaram, em vez de uma tela de erro por causa de um parceiro.
 2. **Recusa do banco separada de falha técnica**
    - *Problema:* "o banco recusou" e "o banco não respondeu" pedem ações opostas do cliente, e cada banco avisa a recusa de um jeito.
-   - *Proposta:* cada adaptador traduz a recusa do seu banco (HTTP 200 com `decision` no Alpha, HTTP 422 com código no Beta) para o status `rejected` com um motivo, mostrado em português no cartão. Um código desconhecido continua sendo recusa, e um erro HTTP desconhecido continua `unavailable`.
+   - *Proposta:* cada adaptador traduz a recusa do seu banco (HTTP 200 com `decision` no Alpha, HTTP 422 com código no Beta) para o status `rejected` com um motivo (convênio, score, teto de valor ou genérico), mostrado em português no cartão. Um código desconhecido continua sendo recusa, e um erro HTTP desconhecido continua `unavailable`.
    - *Por quê (uso pelo cliente):* o cliente sabe que tentar de novo não muda uma recusa, mas pode mudar uma falha. Uma queda do parceiro nunca aparece como "Reprovado".
 3. **Resultado que ajuda a decidir**
-   - *Problema:* uma parcela que não cabe na margem só diz "não", e com várias ofertas o cliente precisa comparar sozinho.
-   - *Proposta:* quando a parcela passa da margem, o cartão mostra o valor máximo que cabe no mesmo prazo. Com duas ou mais ofertas aprovadas, a de menor parcela ganha um selo.
-   - *Por quê (uso pelo cliente):* o cliente sai da simulação com um próximo passo, em vez de recomeçar no escuro.
-4. **Dados pessoais mínimos e fora dos logs**
+   - *Problema:* uma parcela que não cabe na margem só diz "não", aparece como "Reprovado" igual a uma recusa do banco, e com várias ofertas o cliente precisa comparar sozinho.
+   - *Proposta:* quando a parcela passa da margem, o cartão mostra "Aprovado até R$ X em N meses", com o valor máximo que cabe no mesmo prazo, e "Reprovado" fica só para a recusa do banco. Com duas ou mais ofertas aprovadas, a de menor parcela ganha um selo.
+   - *Por quê (uso pelo cliente):* o cliente distingue a decisão do banco da regra de margem da plataforma e sai da simulação com um próximo passo, em vez de recomeçar no escuro.
+4. **Regras de crédito próprias de cada banco**
+   - *Problema:* o convênio com o empregador é a regra central do consignado, mas só o Beta a conferia, e a taxa era a mesma para qualquer cliente.
+   - *Proposta:* cada banco simulado confere o CNPJ contra a própria lista de convênios e calcula um score fictício do CPF, com cortes diferentes; abaixo do corte recusa, e no Alpha a taxa varia pela faixa de score.
+   - *Por quê (uso pelo cliente):* a comparação passa a mostrar o que muda de um banco para outro, como na contratação real: o mesmo cliente pode ser recusado num banco e aprovado no outro, com taxas diferentes.
+5. **Oferta do banco conferida, não recalculada**
+   - *Problema:* a plataforma calculava a parcela a partir da taxa, então podia mostrar um valor diferente do que o banco de fato cobraria.
+   - *Proposta:* o Beta informa a parcela que cobra, a API usa esse valor e confere se ele bate com a Price na taxa informada, com 1 centavo de tolerância; uma divergência maior vira `invalid-response`.
+   - *Por quê (uso pelo cliente e qualidade):* o cliente vê a parcela do banco, e uma oferta contraditória nunca chega à tela como se fosse válida.
+6. **Dados pessoais mínimos e fora dos logs**
    - *Problema:* um simulador de crédito recebe CPF, salário e contato, e logs costumam vazar esses dados.
    - *Proposta:* nada é gravado. Cada banco recebe só o que usa, e toda linha de log passa por um mascaramento recursivo que troca nome, e-mail, CPF, CNPJ, valores, corpo e credenciais por `[REDACTED]`.
    - *Por quê (segurança):* menos exposição em caso de vazamento e aderência aos princípios de finalidade e necessidade da LGPD.
-5. **Superfície da API reduzida**
+7. **Superfície da API reduzida**
    - *Problema:* uma API aberta aceita qualquer origem e qualquer corpo, e mensagens de erro detalhadas expõem a parte interna.
    - *Proposta:* CORS só para a origem configurada, corpo limitado a 10 KB, campos fora do contrato recusados, URLs dos bancos só da configuração e erro 500 sem detalhes internos.
    - *Por quê (segurança):* menos vetores de abuso e de vazamento de informação interna.
-6. **Validação compartilhada e contrato com regras de consistência**
+8. **Validação compartilhada e contrato com regras de consistência**
    - *Problema:* regras duplicadas entre front e API divergem com o tempo, e um esquema que só confere tipos aceita respostas impossíveis.
    - *Proposta:* um único esquema Zod no `shared`, usado pelo front e pela API, que também recusa números incoerentes, como um total diferente de parcela × prazo.
    - *Por quê (qualidade e uso pelo cliente):* o cliente vê a mesma mensagem nos dois lados, e um erro de cálculo quebra o teste antes de chegar à tela.
-7. **Rastreabilidade por requisição**
+9. **Rastreabilidade por requisição**
    - *Problema:* sem identificador, um erro relatado pelo cliente não é encontrado nos logs.
    - *Proposta:* todo pedido recebe um `x-request-id`, devolvido ao cliente, mostrado na tela quando a API devolve erro e presente em cada linha de log, com status e duração por banco.
    - *Por quê (qualidade e infraestrutura):* o suporte localiza a simulação pelo código que o cliente informa.
-8. **Arquitetura verificada pelo lint**
+10. **Arquitetura verificada pelo lint**
    - *Problema:* a regra de que o domínio não depende de infraestrutura só valeria enquanto alguém lembrasse dela na revisão.
    - *Proposta:* o ESLint barra imports de Express, `fetch` e infraestrutura no domínio, e o `npm run check` reúne lint, tipos, testes e build num comando só.
    - *Por quê (qualidade):* uma violação de camada no domínio quebra a verificação local antes de chegar à `main`.

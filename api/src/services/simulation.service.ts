@@ -11,7 +11,7 @@ import type {
   BankQuoteRequest,
   BankQuoteResult,
 } from '../domain/bank-adapter';
-import { calculateMargin, calculateOffer } from '../domain/loan';
+import { calculateMargin, calculateOffer, isConsistentInstallment } from '../domain/loan';
 
 export type Logger = {
   info(data: Record<string, unknown>, message: string): void;
@@ -37,6 +37,7 @@ export function bankErrorMessage(bankName: string, status: BankFailureStatus): s
 const bankRejectionMessages: Record<BankRejectionReason, (bankName: string) => string> = {
   'amount-above-limit': (bankName) => `O ${bankName} não aprova esse valor. Tente um valor menor.`,
   'employer-not-covered': (bankName) => `O ${bankName} não tem convênio com o seu empregador.`,
+  'low-score': (bankName) => `O ${bankName} não aprovou o crédito na análise do seu CPF.`,
   other: (bankName) => `O ${bankName} recusou a proposta.`,
 };
 
@@ -106,6 +107,8 @@ export class SimulationService {
       quote = { status: 'unavailable' };
     }
 
+    quote = checkBankInstallment(quote, request);
+
     this.#logger.info(
       {
         requestId,
@@ -132,6 +135,22 @@ export class SimulationService {
   }
 }
 
+function checkBankInstallment(quote: BankQuoteResult, request: BankQuoteRequest): BankQuoteResult {
+  if (quote.status !== 'success' || quote.installmentCents === undefined) {
+    return quote;
+  }
+
+  const terms = {
+    amountCents: request.amountCents,
+    termMonths: request.termMonths,
+    annualRate: quote.annualRate,
+  };
+
+  return isConsistentInstallment(terms, quote.installmentCents)
+    ? quote
+    : { status: 'invalid-response' };
+}
+
 function toBankResult(
   adapter: BankAdapter,
   quote: BankQuoteResult,
@@ -149,6 +168,7 @@ function toBankResult(
         termMonths: request.termMonths,
         annualRate: quote.annualRate,
         availableMarginCents,
+        bankInstallmentCents: quote.installmentCents,
       }),
     };
   }

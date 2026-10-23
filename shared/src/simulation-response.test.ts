@@ -211,7 +211,7 @@ describe('bankResultSchema', () => {
     expect(bankResultSchema.safeParse(result).success).toBe(false);
   });
 
-  it.each(['amount-above-limit', 'employer-not-covered', 'other'])(
+  it.each(['amount-above-limit', 'employer-not-covered', 'low-score', 'other'])(
     'aceita a recusa do banco com o motivo %s',
     (reason) => {
       const result = { ...identity, status: 'rejected', rejection: { reason, message: 'Motivo.' } };

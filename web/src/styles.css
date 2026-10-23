@@ -262,6 +262,11 @@ button:disabled {
   background: var(--color-success-background);
 }
 
+.outcome-above-margin {
+  color: var(--color-warning-text);
+  background: var(--color-warning-background);
+}
+
 .outcome-rejected {
   color: var(--color-error-text);
   background: var(--color-error-background);

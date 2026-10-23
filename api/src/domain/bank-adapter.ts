@@ -11,7 +11,7 @@ export type BankQuoteRequest = {
 export type BankFailureStatus = Exclude<BankStatus, 'success' | 'rejected'>;
 
 export type BankQuoteResult =
-  | { status: Extract<BankStatus, 'success'>; annualRate: Decimal }
+  | { status: Extract<BankStatus, 'success'>; annualRate: Decimal; installmentCents?: number }
   | { status: Extract<BankStatus, 'rejected'>; reason: BankRejectionReason }
   | { status: BankFailureStatus };
 

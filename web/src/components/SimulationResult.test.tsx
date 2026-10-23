@@ -60,9 +60,17 @@ describe('SimulationResult', () => {
 
   it.each([
     ['uma aprovada e um banco sem resposta', referenceResponse, ['Aprovado', 'Sem resposta']],
-    ['uma aprovada e uma reprovada', oneApprovedResponse, ['Reprovado', 'Aprovado']],
-    ['margem excedida', overMarginResponse, ['Reprovado', 'Reprovado']],
-    ['margem zero', zeroMarginResponse, ['Reprovado', 'Reprovado']],
+    [
+      'uma aprovada e uma acima da margem',
+      oneApprovedResponse,
+      ['Aprovado até R$ 9.858,33 em 24 meses', 'Aprovado'],
+    ],
+    [
+      'margem excedida',
+      overMarginResponse,
+      ['Aprovado até R$ 8.698,52 em 24 meses', 'Aprovado até R$ 8.872,80 em 24 meses'],
+    ],
+    ['margem zero', zeroMarginResponse, ['Sem margem', 'Sem margem']],
   ])('com %s, mostra a situação de cada banco e nenhum selo', (_case, response, labels) => {
     renderResult(response);
 

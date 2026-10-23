@@ -3,6 +3,7 @@ import { Decimal, floorCents, formatRate, roundCentsHalfUp, roundRate } from './
 
 export const CONSIGNABLE_MARGIN_RATE = new Decimal('0.35');
 export const MAX_PLAUSIBLE_ANNUAL_RATE = new Decimal(10);
+export const INSTALLMENT_TOLERANCE_CENTS = 1;
 
 const MONTHS_PER_YEAR = 12;
 
@@ -69,11 +70,28 @@ export function isPlausibleAnnualRate(annualRate: Decimal): boolean {
   return annualRate.gte(0) && annualRate.lte(MAX_PLAUSIBLE_ANNUAL_RATE);
 }
 
-export type OfferInput = {
+export type LoanTerms = {
   amountCents: number;
   termMonths: number;
   annualRate: Decimal;
+};
+
+export function isConsistentInstallment(
+  { amountCents, termMonths, annualRate }: LoanTerms,
+  installmentCents: number,
+): boolean {
+  const expectedCents = calculateInstallmentCents(
+    amountCents,
+    toMonthlyRate(annualRate),
+    termMonths,
+  );
+
+  return Math.abs(installmentCents - expectedCents) <= INSTALLMENT_TOLERANCE_CENTS;
+}
+
+export type OfferInput = LoanTerms & {
   availableMarginCents: number;
+  bankInstallmentCents?: number | undefined;
 };
 
 export function calculateOffer({
@@ -81,9 +99,11 @@ export function calculateOffer({
   termMonths,
   annualRate,
   availableMarginCents,
+  bankInstallmentCents,
 }: OfferInput): Offer {
   const monthlyRate = toMonthlyRate(annualRate);
-  const installmentCents = calculateInstallmentCents(amountCents, monthlyRate, termMonths);
+  const installmentCents =
+    bankInstallmentCents ?? calculateInstallmentCents(amountCents, monthlyRate, termMonths);
   const totalCents = installmentCents * termMonths;
   const withinMargin = installmentCents <= availableMarginCents;
 

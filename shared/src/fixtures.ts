@@ -7,6 +7,7 @@ export const fictitiousCpfs = [
   { digits: '38192746500', masked: '381.927.465-00' },
   { digits: '60415827353', masked: '604.158.273-53' },
   { digits: '94730261887', masked: '947.302.618-87' },
+  { digits: '52964173800', masked: '529.641.738-00' },
 ] as const;
 
 export const fictitiousCnpjs = [

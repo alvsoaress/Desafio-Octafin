@@ -2,11 +2,13 @@ import { offerSchema } from '@consignado/shared';
 import { describe, expect, it } from 'vitest';
 import {
   CONSIGNABLE_MARGIN_RATE,
+  INSTALLMENT_TOLERANCE_CENTS,
   MAX_PLAUSIBLE_ANNUAL_RATE,
   calculateInstallmentCents,
   calculateMargin,
   calculateMaxFinanceableCents,
   calculateOffer,
+  isConsistentInstallment,
   isPlausibleAnnualRate,
   toMonthlyRate,
 } from './loan';
@@ -118,6 +120,22 @@ describe('isPlausibleAnnualRate', () => {
   });
 });
 
+describe('isConsistentInstallment', () => {
+  const terms = { amountCents: 1000000, termMonths: 24, annualRate: new Decimal('0.215') };
+
+  it.each([50717, 50716, 50718])('aceita a parcela de %i centavos', (installmentCents) => {
+    expect(isConsistentInstallment(terms, installmentCents)).toBe(true);
+  });
+
+  it.each([50715, 50719, 0])('recusa a parcela de %i centavos', (installmentCents) => {
+    expect(isConsistentInstallment(terms, installmentCents)).toBe(false);
+  });
+
+  it('tolera só um centavo de arredondamento', () => {
+    expect(INSTALLMENT_TOLERANCE_CENTS).toBe(1);
+  });
+});
+
 describe('calculateOffer', () => {
   const reference = {
     amountCents: 1000000,
@@ -185,6 +203,22 @@ describe('calculateOffer', () => {
       installmentCents: 50717,
       withinMargin: true,
     });
+  });
+
+  it('usa a parcela do banco quando ela é informada', () => {
+    const offer = calculateOffer({
+      ...reference,
+      availableMarginCents: 51733,
+      bankInstallmentCents: 51734,
+    });
+
+    expect(offer).toMatchObject({
+      installmentCents: 51734,
+      totalCents: 1241616,
+      totalInterestCents: 241616,
+      withinMargin: false,
+    });
+    expect(offerSchema.safeParse(offer).success).toBe(true);
   });
 
   it('calcula a oferta com taxa zero sem dividir por zero', () => {
