@@ -5,6 +5,7 @@ import {
   BETA_MIN_SCORE,
   BETA_PARTNER_EMPLOYERS,
   BETA_SLOW_DELAY_MS,
+  betaInstallment,
   createBetaApp,
   type BetaOptions,
 } from './beta';
@@ -24,7 +25,7 @@ const validBody = {
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
-type BetaQuote = { codigo: string; taxaAnualPercentual?: string };
+type BetaQuote = { codigo: string; taxaAnualPercentual?: string; valorParcela?: string };
 
 function postSimulation(body: unknown, options: BetaOptions = {}) {
   return request(createBetaApp({ delayMs: 0, slowDelayMs: 0, log: silentLog, ...options }))
@@ -32,15 +33,26 @@ function postSimulation(body: unknown, options: BetaOptions = {}) {
     .send(body as object);
 }
 
+describe('betaInstallment', () => {
+  it.each([
+    ['10000.00', 24, '507.17'],
+    ['500.00', 6, '88.17'],
+    ['500000.00', 96, '10362.52'],
+  ])('cobra pela Price em %s por %i meses a parcela de %s', (valor, prazoMeses, parcela) => {
+    expect(betaInstallment(valor, prazoMeses)).toBe(parcela);
+  });
+});
+
 describe('POST /api/simulacao', () => {
   describe('cenário ok', () => {
-    it('devolve a taxa anual em percentual', async () => {
+    it('devolve a taxa anual em percentual e a parcela em reais', async () => {
       const response = await postSimulation(validBody, { scenario: 'ok' });
       const body = response.body as BetaQuote;
 
       expect(response.status).toBe(200);
-      expect(Object.keys(body).sort()).toEqual(['codigo', 'taxaAnualPercentual']);
+      expect(Object.keys(body).sort()).toEqual(['codigo', 'taxaAnualPercentual', 'valorParcela']);
       expect(body.taxaAnualPercentual).toBe('21.50');
+      expect(body.valorParcela).toBe('507.17');
       expect(body.codigo).toMatch(uuidPattern);
       expect(response.text).not.toContain(cpf.digits);
     });

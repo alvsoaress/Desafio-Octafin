@@ -26,7 +26,7 @@ describe('createContainer', () => {
   it('consulta o Alpha e o Beta, nessa ordem, nas URLs da configuração', async () => {
     const beta = nock(config.betaBaseUrl)
       .post('/api/simulacao')
-      .reply(200, { codigo: 'b-1', taxaAnualPercentual: '21.50' });
+      .reply(200, { codigo: 'b-1', taxaAnualPercentual: '21.50', valorParcela: '507.17' });
     const alpha = nock(config.alphaBaseUrl)
       .post('/v1/loan-quotes')
       .reply(200, { quoteId: 'a-1', decision: 'approved', annualInterestRate: '0.24' });

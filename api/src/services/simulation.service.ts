@@ -11,7 +11,7 @@ import type {
   BankQuoteRequest,
   BankQuoteResult,
 } from '../domain/bank-adapter';
-import { calculateMargin, calculateOffer } from '../domain/loan';
+import { calculateMargin, calculateOffer, isConsistentInstallment } from '../domain/loan';
 
 export type Logger = {
   info(data: Record<string, unknown>, message: string): void;
@@ -107,6 +107,8 @@ export class SimulationService {
       quote = { status: 'unavailable' };
     }
 
+    quote = checkBankInstallment(quote, request);
+
     this.#logger.info(
       {
         requestId,
@@ -133,6 +135,22 @@ export class SimulationService {
   }
 }
 
+function checkBankInstallment(quote: BankQuoteResult, request: BankQuoteRequest): BankQuoteResult {
+  if (quote.status !== 'success' || quote.installmentCents === undefined) {
+    return quote;
+  }
+
+  const terms = {
+    amountCents: request.amountCents,
+    termMonths: request.termMonths,
+    annualRate: quote.annualRate,
+  };
+
+  return isConsistentInstallment(terms, quote.installmentCents)
+    ? quote
+    : { status: 'invalid-response' };
+}
+
 function toBankResult(
   adapter: BankAdapter,
   quote: BankQuoteResult,
@@ -150,6 +168,7 @@ function toBankResult(
         termMonths: request.termMonths,
         annualRate: quote.annualRate,
         availableMarginCents,
+        bankInstallmentCents: quote.installmentCents,
       }),
     };
   }

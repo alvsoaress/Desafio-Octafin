@@ -162,6 +162,54 @@ describe('SimulationService', () => {
     });
   });
 
+  it('usa a parcela informada pelo banco quando ela bate com a Price', async () => {
+    const response = await createService([
+      fakeAdapter(
+        'beta',
+        respondsWith({
+          status: 'success',
+          annualRate: new Decimal('0.215'),
+          installmentCents: 50718,
+        }),
+      ),
+    ]).simulate(simulationRequest(), randomUUID());
+
+    expect(response.results[0]).toMatchObject({
+      status: 'success',
+      offer: { installmentCents: 50718, totalCents: 50718 * 24 },
+    });
+  });
+
+  it('trata como resposta inválida a parcela do banco que não bate com a Price', async () => {
+    const logger = fakeLogger();
+    const response = await createService(
+      [
+        fakeAdapter('alpha', respondsWith(success('0.24'))),
+        fakeAdapter(
+          'beta',
+          respondsWith({
+            status: 'success',
+            annualRate: new Decimal('0.215'),
+            installmentCents: 50719,
+          }),
+        ),
+      ],
+      1000,
+      logger,
+    ).simulate(simulationRequest(), randomUUID());
+
+    expect(response.partial).toBe(true);
+    expect(response.results[1]).toMatchObject({
+      bankId: 'beta',
+      status: 'invalid-response',
+      error: { code: 'invalid-response' },
+    });
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({ bankId: 'beta', status: 'invalid-response' }),
+      'Consulta ao banco concluída',
+    );
+  });
+
   it('mantém a ordem dos bancos registrados mesmo quando o segundo responde antes', async () => {
     const service = createService([
       fakeAdapter('alpha', respondsWith(success('0.24'), 50)),
