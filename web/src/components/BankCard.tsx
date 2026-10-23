@@ -2,7 +2,7 @@ import type { BankResult, Offer } from '@consignado/shared';
 import { formatAnnualRate, formatCents, formatMonthlyRate } from '../lib/format';
 import { bankOutcome, type BankOutcome } from '../lib/result';
 
-const OUTCOME_LABELS: Record<BankOutcome, string> = {
+const OUTCOME_LABELS: Record<Exclude<BankOutcome, 'above-margin'>, string> = {
   approved: 'Aprovado',
   rejected: 'Reprovado',
   'no-response': 'Sem resposta',
@@ -18,11 +18,9 @@ export type BankCardProps = {
 function MarginWarning({
   offer,
   availableMarginCents,
-  termMonths,
 }: {
   offer: Offer;
   availableMarginCents: number;
-  termMonths: number;
 }) {
   if (offer.withinMargin) {
     return null;
@@ -42,18 +40,20 @@ function MarginWarning({
         A parcela de {formatCents(offer.installmentCents)} passa da sua margem disponível de{' '}
         {formatCents(availableMarginCents)}.
       </p>
-      <p>
-        Com essa margem, você consegue até {formatCents(offer.maxFinanceableCents ?? 0)} em{' '}
-        {termMonths} meses.
-      </p>
     </div>
   );
 }
 
-function OutcomeLabel({ result }: { result: BankResult }) {
-  const outcome = bankOutcome(result);
+function aboveMarginLabel(offer: Offer, availableMarginCents: number, termMonths: number): string {
+  if (availableMarginCents === 0) {
+    return 'Sem margem';
+  }
 
-  return <span className={`outcome outcome-${outcome}`}>{OUTCOME_LABELS[outcome]}</span>;
+  return `Aprovado até ${formatCents(offer.maxFinanceableCents ?? 0)} em ${termMonths} meses`;
+}
+
+function OutcomeLabel({ outcome, label }: { outcome: BankOutcome; label: string }) {
+  return <span className={`outcome outcome-${outcome}`}>{label}</span>;
 }
 
 export function BankCard({ result, lowest, availableMarginCents, termMonths }: BankCardProps) {
@@ -62,7 +62,7 @@ export function BankCard({ result, lowest, availableMarginCents, termMonths }: B
       <article className="bank-card">
         <div className="bank-card-header">
           <h3>{result.bankName}</h3>
-          <OutcomeLabel result={result} />
+          <OutcomeLabel outcome="rejected" label={OUTCOME_LABELS.rejected} />
         </div>
         <p>{result.rejection.message}</p>
       </article>
@@ -74,7 +74,7 @@ export function BankCard({ result, lowest, availableMarginCents, termMonths }: B
       <article className="bank-card bank-card-failed">
         <div className="bank-card-header">
           <h3>{result.bankName}</h3>
-          <OutcomeLabel result={result} />
+          <OutcomeLabel outcome="no-response" label={OUTCOME_LABELS['no-response']} />
         </div>
         <p className="bank-error">{result.error.message}</p>
       </article>
@@ -82,12 +82,17 @@ export function BankCard({ result, lowest, availableMarginCents, termMonths }: B
   }
 
   const { offer } = result;
+  const outcome = bankOutcome(result);
+  const label =
+    outcome === 'above-margin'
+      ? aboveMarginLabel(offer, availableMarginCents, termMonths)
+      : OUTCOME_LABELS.approved;
 
   return (
     <article className="bank-card">
       <div className="bank-card-header">
         <h3>{result.bankName}</h3>
-        <OutcomeLabel result={result} />
+        <OutcomeLabel outcome={outcome} label={label} />
         {lowest && <span className="badge">Menor parcela</span>}
       </div>
       <dl className="offer">
@@ -112,11 +117,7 @@ export function BankCard({ result, lowest, availableMarginCents, termMonths }: B
           <dd>{formatCents(offer.totalInterestCents)}</dd>
         </div>
       </dl>
-      <MarginWarning
-        offer={offer}
-        availableMarginCents={availableMarginCents}
-        termMonths={termMonths}
-      />
+      <MarginWarning offer={offer} availableMarginCents={availableMarginCents} />
     </article>
   );
 }

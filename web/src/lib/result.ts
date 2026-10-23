@@ -1,6 +1,6 @@
 import { bankResponded, type BankResult } from '@consignado/shared';
 
-export type BankOutcome = 'approved' | 'rejected' | 'no-response';
+export type BankOutcome = 'approved' | 'above-margin' | 'rejected' | 'no-response';
 
 export function bankOutcome(result: BankResult): BankOutcome {
   if (result.status === 'rejected') {
@@ -11,7 +11,7 @@ export function bankOutcome(result: BankResult): BankOutcome {
     return 'no-response';
   }
 
-  return result.offer.withinMargin ? 'approved' : 'rejected';
+  return result.offer.withinMargin ? 'approved' : 'above-margin';
 }
 
 export function lowestInstallmentBankId(results: readonly BankResult[]): string | null {

@@ -79,15 +79,14 @@ describe('BankCard', () => {
     expect(screen.queryByText('Sem resposta')).not.toBeInTheDocument();
   });
 
-  it('fora da margem, mostra a parcela máxima e o valor financiável', () => {
+  it('fora da margem, mostra o valor aprovado no prazo e por que a parcela não cabe', () => {
     renderCard(overMarginAlpha!, overMarginResponse);
 
+    expect(screen.getByText('Aprovado até R$ 8.698,52 em 24 meses')).toBeInTheDocument();
     expect(
       screen.getByText('A parcela de R$ 517,33 passa da sua margem disponível de R$ 450,00.'),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText('Com essa margem, você consegue até R$ 8.698,52 em 24 meses.'),
-    ).toBeInTheDocument();
+    expect(screen.queryByText('Reprovado')).not.toBeInTheDocument();
   });
 
   it('com margem zero, mostra só o aviso de margem zero', () => {
@@ -96,14 +95,21 @@ describe('BankCard', () => {
     expect(
       screen.getByText('Você não tem margem disponível para uma nova parcela.'),
     ).toBeInTheDocument();
+    expect(screen.getByText('Sem margem')).toBeInTheDocument();
     expect(screen.queryByText(/passa da sua margem/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Com essa margem/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Aprovado até/)).not.toBeInTheDocument();
   });
 
   it.each([
     ['dentro da margem', 'Aprovado', referenceAlpha!, referenceResponse],
-    ['fora da margem', 'Reprovado', overMarginAlpha!, overMarginResponse],
-    ['com margem zero', 'Reprovado', zeroMarginAlpha!, zeroMarginResponse],
+    [
+      'fora da margem',
+      'Aprovado até R$ 8.698,52 em 24 meses',
+      overMarginAlpha!,
+      overMarginResponse,
+    ],
+    ['com margem zero', 'Sem margem', zeroMarginAlpha!, zeroMarginResponse],
+    ['na recusa do banco', 'Reprovado', betaRejected, referenceResponse],
     ['em timeout', 'Sem resposta', betaTimeout, referenceResponse],
     ['em unavailable', 'Sem resposta', betaUnavailable, referenceResponse],
     ['em invalid-response', 'Sem resposta', betaInvalidResponse, referenceResponse],
@@ -111,7 +117,7 @@ describe('BankCard', () => {
     renderCard(result, response);
 
     expect(screen.getByText(label)).toBeInTheDocument();
-    for (const other of ['Aprovado', 'Reprovado', 'Sem resposta']) {
+    for (const other of ['Aprovado', 'Reprovado', 'Sem resposta', 'Sem margem']) {
       if (other !== label) {
         expect(screen.queryByText(other)).not.toBeInTheDocument();
       }

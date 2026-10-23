@@ -24,8 +24,8 @@ describe('bankOutcome', () => {
   it.each([
     ['margem excedida', overMarginResponse],
     ['margem zero', zeroMarginResponse],
-  ])('reprova a oferta fora da margem (%s)', (_case, response) => {
-    expect(bankOutcome(response.results[0]!)).toBe('rejected');
+  ])('separa da recusa a oferta fora da margem (%s)', (_case, response) => {
+    expect(bankOutcome(response.results[0]!)).toBe('above-margin');
   });
 
   it('reprova quando o próprio banco recusa', () => {
@@ -48,7 +48,7 @@ describe('lowestInstallmentBankId', () => {
 
   it.each([
     ['uma aprovada e um banco sem resposta', referenceResponse],
-    ['uma aprovada e uma reprovada', oneApprovedResponse],
+    ['uma aprovada e uma acima da margem', oneApprovedResponse],
     ['margem excedida', overMarginResponse],
     ['margem zero', zeroMarginResponse],
     ['todos falhando', allFailedResponse],
