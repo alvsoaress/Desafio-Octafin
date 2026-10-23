@@ -18,6 +18,7 @@ const alphaResponseSchema = z.discriminatedUnion('decision', [
 
 const alphaReasons = new Map<string, BankRejectionReason>([
   ['AMOUNT_ABOVE_LIMIT', 'amount-above-limit'],
+  ['EMPLOYER_NOT_COVERED', 'employer-not-covered'],
 ]);
 
 function readReply({ status, body }: BankReply): BankQuoteResult | null {
@@ -48,6 +49,7 @@ export class AlphaAdapter implements BankAdapter {
       this.#url,
       {
         document: request.cpf,
+        employerDocument: request.employerCnpj,
         amountCents: request.amountCents,
         termMonths: request.termMonths,
       },

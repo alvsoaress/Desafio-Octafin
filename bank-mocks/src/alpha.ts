@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { isValidCpf } from '@consignado/shared';
+import { isValidCnpj, isValidCpf } from '@consignado/shared';
 import express, { type ErrorRequestHandler, type Express } from 'express';
 import { z } from 'zod';
 import { waitWhileOpen } from './delay';
@@ -12,12 +12,20 @@ export type AlphaOptions = {
 
 const ALPHA_DEFAULT_DELAY_MS = 100;
 export const ALPHA_MAX_AMOUNT_CENTS = 10_000_000;
+export const ALPHA_PARTNER_EMPLOYERS: ReadonlySet<string> = new Set([
+  '47182936000144',
+  '38501462000165',
+]);
 
 const alphaRequestSchema = z.strictObject({
   document: z
     .string()
     .regex(/^\d{11}$/)
     .refine(isValidCpf),
+  employerDocument: z
+    .string()
+    .regex(/^\d{14}$/)
+    .refine(isValidCnpj),
   amountCents: z.number().int().positive(),
   termMonths: z.number().int().min(6).max(96),
 });
@@ -57,6 +65,15 @@ export function createAlphaApp({
     }
 
     if (!(await waitWhileOpen(response, delayMs))) {
+      return;
+    }
+
+    if (!ALPHA_PARTNER_EMPLOYERS.has(result.data.employerDocument)) {
+      response.json({
+        quoteId: randomUUID(),
+        decision: 'declined',
+        reasonCode: 'EMPLOYER_NOT_COVERED',
+      });
       return;
     }
 

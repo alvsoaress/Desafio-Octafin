@@ -35,10 +35,11 @@ describe('AlphaAdapter', () => {
     expect(adapter.bankName).toBe('Banco Alpha');
   });
 
-  it('traduz a requisição para o contrato do Alpha, sem o CNPJ, e a taxa decimal para a taxa canônica', async () => {
+  it('traduz a requisição para o contrato do Alpha e a taxa decimal para a taxa canônica', async () => {
     const scope = nock(BASE_URL)
       .post(ROUTE, {
         document: fictitiousCpfs[0].digits,
+        employerDocument: fictitiousCnpjs[0].digits,
         amountCents: 1000000,
         termMonths: 24,
       })
@@ -70,6 +71,14 @@ describe('AlphaAdapter', () => {
       .reply(200, { quoteId: QUOTE_ID, decision: 'declined', reasonCode: 'AMOUNT_ABOVE_LIMIT' });
 
     expect(await quote()).toEqual({ status: 'rejected', reason: 'amount-above-limit' });
+  });
+
+  it('traduz a recusa por empregador sem convênio', async () => {
+    nock(BASE_URL)
+      .post(ROUTE)
+      .reply(200, { quoteId: QUOTE_ID, decision: 'declined', reasonCode: 'EMPLOYER_NOT_COVERED' });
+
+    expect(await quote()).toEqual({ status: 'rejected', reason: 'employer-not-covered' });
   });
 
   it.each(['CREDIT_POLICY', 'constructor'])(

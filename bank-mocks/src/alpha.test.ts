@@ -1,14 +1,22 @@
-import { fictitiousCpfs } from '@consignado/shared/fixtures';
+import { fictitiousCnpjs, fictitiousCpfs } from '@consignado/shared/fixtures';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
-import { ALPHA_MAX_AMOUNT_CENTS, alphaRateForTerm, createAlphaApp } from './alpha';
+import {
+  ALPHA_MAX_AMOUNT_CENTS,
+  ALPHA_PARTNER_EMPLOYERS,
+  alphaRateForTerm,
+  createAlphaApp,
+} from './alpha';
+import { BETA_PARTNER_EMPLOYERS } from './beta';
 
 const cpf = fictitiousCpfs[0];
+const [partnerCnpj, outsiderCnpj, otherPartnerCnpj] = fictitiousCnpjs;
 
 const silentLog = () => {};
 
 const validBody = {
   document: cpf.digits,
+  employerDocument: partnerCnpj.digits,
   amountCents: 1000000,
   termMonths: 24,
 };
@@ -81,6 +89,42 @@ describe('POST /v1/loan-quotes', () => {
     expect(body.quoteId).toMatch(uuidPattern);
   });
 
+  it('tem convênio com o primeiro e o terceiro empregadores fictícios', () => {
+    expect([...ALPHA_PARTNER_EMPLOYERS]).toEqual([partnerCnpj.digits, otherPartnerCnpj.digits]);
+  });
+
+  it('tem uma lista de convênios diferente da do Beta', () => {
+    expect([...ALPHA_PARTNER_EMPLOYERS]).not.toEqual([...BETA_PARTNER_EMPLOYERS]);
+  });
+
+  it('aprova o empregador conveniado', async () => {
+    const body = await quote({ ...validBody, employerDocument: otherPartnerCnpj.digits });
+
+    expect(body.decision).toBe('approved');
+  });
+
+  it('recusa com HTTP 200 o empregador sem convênio, sem taxa', async () => {
+    const response = await postQuote({ ...validBody, employerDocument: outsiderCnpj.digits });
+    const body = response.body as AlphaQuote;
+
+    expect(response.status).toBe(200);
+    expect(Object.keys(body).sort()).toEqual(['decision', 'quoteId', 'reasonCode']);
+    expect(body.decision).toBe('declined');
+    expect(body.reasonCode).toBe('EMPLOYER_NOT_COVERED');
+    expect(body.quoteId).toMatch(uuidPattern);
+    expect(response.text).not.toContain(outsiderCnpj.digits);
+  });
+
+  it('confere o convênio antes do limite de valor', async () => {
+    const body = await quote({
+      ...validBody,
+      employerDocument: outsiderCnpj.digits,
+      amountCents: ALPHA_MAX_AMOUNT_CENTS + 1,
+    });
+
+    expect(body.reasonCode).toBe('EMPLOYER_NOT_COVERED');
+  });
+
   it('não devolve o CPF na resposta', async () => {
     const response = await postQuote(validBody);
 
@@ -98,6 +142,9 @@ describe('POST /v1/loan-quotes', () => {
     ['CPF com máscara', { document: cpf.masked }],
     ['CPF com dígito verificador errado', { document: '38192746501' }],
     ['CPF ausente', { document: undefined }],
+    ['CNPJ com máscara', { employerDocument: partnerCnpj.masked }],
+    ['CNPJ com dígito verificador errado', { employerDocument: '47182936000145' }],
+    ['CNPJ ausente', { employerDocument: undefined }],
     ['valor como string', { amountCents: '1000000' }],
     ['valor zero', { amountCents: 0 }],
     ['valor com casas decimais', { amountCents: 1000000.5 }],

@@ -1,4 +1,4 @@
-import { fictitiousCpfs } from '@consignado/shared/fixtures';
+import { fictitiousCnpjs, fictitiousCpfs } from '@consignado/shared/fixtures';
 import type { Express } from 'express';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
@@ -7,6 +7,7 @@ import { createBetaApp } from './beta';
 import type { LogLine } from './request-log';
 
 const cpf = fictitiousCpfs[0];
+const cnpj = fictitiousCnpjs[0];
 
 async function loggedLines(
   createApp: (log: LogLine) => Express,
@@ -28,7 +29,7 @@ describe('requestLog', () => {
     const lines = await loggedLines(
       (log) => createAlphaApp({ delayMs: 0, log }),
       '/v1/loan-quotes',
-      { document: cpf.digits, amountCents: 1000000, termMonths: 24 },
+      { document: cpf.digits, employerDocument: cnpj.digits, amountCents: 1000000, termMonths: 24 },
     );
 
     expect(lines).toHaveLength(1);
@@ -46,13 +47,13 @@ describe('requestLog', () => {
       'Alpha com sucesso',
       (log: LogLine) => createAlphaApp({ delayMs: 0, log }),
       '/v1/loan-quotes',
-      { document: cpf.digits, amountCents: 1234567, termMonths: 24 },
+      { document: cpf.digits, employerDocument: cnpj.digits, amountCents: 1234567, termMonths: 24 },
     ],
     [
       'Alpha com CPF mascarado recusado',
       (log: LogLine) => createAlphaApp({ delayMs: 0, log }),
       '/v1/loan-quotes',
-      { document: cpf.masked, amountCents: 1234567, termMonths: 24 },
+      { document: cpf.masked, employerDocument: cnpj.masked, amountCents: 1234567, termMonths: 24 },
     ],
     [
       'Beta com sucesso',
@@ -66,13 +67,15 @@ describe('requestLog', () => {
       '/api/simulacao',
       { cpf: cpf.masked, valor: '12345.67', prazoMeses: 24 },
     ],
-  ])('não registra CPF nem valor: %s', async (_case, createApp, path, body) => {
+  ])('não registra CPF, CNPJ nem valor: %s', async (_case, createApp, path, body) => {
     const lines = await loggedLines(createApp, path, body);
     const output = lines.join('\n');
 
     expect(lines).toHaveLength(1);
     expect(output).not.toContain(cpf.digits);
     expect(output).not.toContain(cpf.masked);
+    expect(output).not.toContain(cnpj.digits);
+    expect(output).not.toContain(cnpj.masked);
     expect(output).not.toContain('1234567');
     expect(output).not.toContain('12345.67');
   });
