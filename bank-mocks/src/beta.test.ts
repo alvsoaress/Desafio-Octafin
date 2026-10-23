@@ -2,6 +2,7 @@ import { fictitiousCnpjs, fictitiousCpfs } from '@consignado/shared/fixtures';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import {
+  BETA_MIN_SCORE,
   BETA_PARTNER_EMPLOYERS,
   BETA_SLOW_DELAY_MS,
   createBetaApp,
@@ -9,7 +10,7 @@ import {
 } from './beta';
 import { BETA_SCENARIOS } from './config';
 
-const cpf = fictitiousCpfs[0];
+const [cpf, lowScoreCpf, betaOnlyScoreCpf] = fictitiousCpfs;
 const [partnerCnpj, otherPartnerCnpj, outsiderCnpj] = fictitiousCnpjs;
 
 const silentLog = () => {};
@@ -83,6 +84,40 @@ describe('POST /api/simulacao', () => {
       expect(body.erro).toBe('empregador_sem_convenio');
       expect(body.codigo).toMatch(uuidPattern);
       expect(response.text).not.toContain(outsiderCnpj.digits);
+    });
+
+    it('aprova o CPF que o Alpha recusa por score', async () => {
+      const response = await postSimulation(
+        { ...validBody, cpf: betaOnlyScoreCpf.digits },
+        { scenario: 'ok' },
+      );
+
+      expect(response.status).toBe(200);
+      expect((response.body as BetaQuote).taxaAnualPercentual).toBe('21.50');
+    });
+
+    it('recusa com HTTP 422 o CPF de score baixo, sem taxa', async () => {
+      const response = await postSimulation(
+        { ...validBody, cpf: lowScoreCpf.digits },
+        { scenario: 'ok' },
+      );
+      const body = response.body as { codigo: string; erro: string };
+
+      expect(BETA_MIN_SCORE).toBe(300);
+      expect(response.status).toBe(422);
+      expect(Object.keys(body).sort()).toEqual(['codigo', 'erro']);
+      expect(body.erro).toBe('score_insuficiente');
+      expect(body.codigo).toMatch(uuidPattern);
+      expect(response.text).not.toContain(lowScoreCpf.digits);
+    });
+
+    it('confere o convênio antes do score', async () => {
+      const response = await postSimulation(
+        { ...validBody, cpf: lowScoreCpf.digits, cnpjEmpregador: outsiderCnpj.digits },
+        { scenario: 'ok' },
+      );
+
+      expect((response.body as { erro: string }).erro).toBe('empregador_sem_convenio');
     });
 
     it('recusa JSON malformado com HTTP 400', async () => {

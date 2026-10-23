@@ -4,6 +4,7 @@ import express, { type ErrorRequestHandler, type Express } from 'express';
 import { z } from 'zod';
 import { waitWhileOpen } from './delay';
 import { requestLog, type LogLine } from './request-log';
+import { scoreFromCpf } from './score';
 
 export type AlphaOptions = {
   delayMs?: number;
@@ -12,6 +13,8 @@ export type AlphaOptions = {
 
 const ALPHA_DEFAULT_DELAY_MS = 100;
 export const ALPHA_MAX_AMOUNT_CENTS = 10_000_000;
+export const ALPHA_MIN_SCORE = 500;
+export const ALPHA_PRIME_SCORE = 750;
 export const ALPHA_PARTNER_EMPLOYERS: ReadonlySet<string> = new Set([
   '47182936000144',
   '38501462000165',
@@ -30,16 +33,22 @@ const alphaRequestSchema = z.strictObject({
   termMonths: z.number().int().min(6).max(96),
 });
 
-export function alphaRateForTerm(termMonths: number): string {
+const ALPHA_PRIME_RATES = ['0.24', '0.26', '0.28'] as const;
+const ALPHA_STANDARD_RATES = ['0.30', '0.32', '0.34'] as const;
+
+export function alphaRate(termMonths: number, score: number): string {
+  const [short, medium, long] =
+    score >= ALPHA_PRIME_SCORE ? ALPHA_PRIME_RATES : ALPHA_STANDARD_RATES;
+
   if (termMonths <= 24) {
-    return '0.24';
+    return short;
   }
 
   if (termMonths <= 60) {
-    return '0.26';
+    return medium;
   }
 
-  return '0.28';
+  return long;
 }
 
 const invalidRequest = { error: 'invalid_request' };
@@ -77,6 +86,17 @@ export function createAlphaApp({
       return;
     }
 
+    const score = scoreFromCpf(result.data.document);
+
+    if (score < ALPHA_MIN_SCORE) {
+      response.json({
+        quoteId: randomUUID(),
+        decision: 'declined',
+        reasonCode: 'LOW_SCORE',
+      });
+      return;
+    }
+
     if (result.data.amountCents > ALPHA_MAX_AMOUNT_CENTS) {
       response.json({
         quoteId: randomUUID(),
@@ -89,7 +109,7 @@ export function createAlphaApp({
     response.json({
       quoteId: randomUUID(),
       decision: 'approved',
-      annualInterestRate: alphaRateForTerm(result.data.termMonths),
+      annualInterestRate: alphaRate(result.data.termMonths, score),
     });
   });
 

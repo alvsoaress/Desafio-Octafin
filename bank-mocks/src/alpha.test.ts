@@ -3,13 +3,15 @@ import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import {
   ALPHA_MAX_AMOUNT_CENTS,
+  ALPHA_MIN_SCORE,
   ALPHA_PARTNER_EMPLOYERS,
-  alphaRateForTerm,
+  ALPHA_PRIME_SCORE,
+  alphaRate,
   createAlphaApp,
 } from './alpha';
 import { BETA_PARTNER_EMPLOYERS } from './beta';
 
-const cpf = fictitiousCpfs[0];
+const [cpf, lowScoreCpf, betaOnlyScoreCpf, standardScoreCpf] = fictitiousCpfs;
 const [partnerCnpj, outsiderCnpj, otherPartnerCnpj] = fictitiousCnpjs;
 
 const silentLog = () => {};
@@ -42,7 +44,7 @@ async function quote(body: unknown): Promise<AlphaQuote> {
   return response.body as AlphaQuote;
 }
 
-describe('alphaRateForTerm', () => {
+describe('alphaRate', () => {
   it.each([
     [6, '0.24'],
     [24, '0.24'],
@@ -50,8 +52,16 @@ describe('alphaRateForTerm', () => {
     [60, '0.26'],
     [61, '0.28'],
     [96, '0.28'],
-  ])('prazo de %i meses usa a taxa %s', (termMonths, rate) => {
-    expect(alphaRateForTerm(termMonths)).toBe(rate);
+  ])('com score alto, prazo de %i meses usa a taxa %s', (termMonths, rate) => {
+    expect(alphaRate(termMonths, ALPHA_PRIME_SCORE)).toBe(rate);
+  });
+
+  it.each([
+    [24, '0.30'],
+    [60, '0.32'],
+    [96, '0.34'],
+  ])('com score médio, prazo de %i meses usa a taxa %s', (termMonths, rate) => {
+    expect(alphaRate(termMonths, ALPHA_PRIME_SCORE - 1)).toBe(rate);
   });
 });
 
@@ -123,6 +133,44 @@ describe('POST /v1/loan-quotes', () => {
     });
 
     expect(body.reasonCode).toBe('EMPLOYER_NOT_COVERED');
+  });
+
+  it('aprova com a taxa maior o CPF de score médio', async () => {
+    const body = await quote({ ...validBody, document: standardScoreCpf.digits });
+
+    expect(body.decision).toBe('approved');
+    expect(body.annualInterestRate).toBe('0.30');
+  });
+
+  it.each([
+    ['score baixo', lowScoreCpf],
+    ['score aceito só pelo Beta', betaOnlyScoreCpf],
+  ])('recusa com HTTP 200 o CPF de %s, sem taxa', async (_case, refusedCpf) => {
+    const response = await postQuote({ ...validBody, document: refusedCpf.digits });
+    const body = response.body as AlphaQuote;
+
+    expect(ALPHA_MIN_SCORE).toBe(500);
+    expect(response.status).toBe(200);
+    expect(Object.keys(body).sort()).toEqual(['decision', 'quoteId', 'reasonCode']);
+    expect(body.decision).toBe('declined');
+    expect(body.reasonCode).toBe('LOW_SCORE');
+    expect(response.text).not.toContain(refusedCpf.digits);
+  });
+
+  it('confere o convênio antes do score e o score antes do limite de valor', async () => {
+    const outsider = await quote({
+      ...validBody,
+      document: lowScoreCpf.digits,
+      employerDocument: outsiderCnpj.digits,
+    });
+    const lowScore = await quote({
+      ...validBody,
+      document: lowScoreCpf.digits,
+      amountCents: ALPHA_MAX_AMOUNT_CENTS + 1,
+    });
+
+    expect(outsider.reasonCode).toBe('EMPLOYER_NOT_COVERED');
+    expect(lowScore.reasonCode).toBe('LOW_SCORE');
   });
 
   it('não devolve o CPF na resposta', async () => {

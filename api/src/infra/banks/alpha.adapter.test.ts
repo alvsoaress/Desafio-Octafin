@@ -81,6 +81,14 @@ describe('AlphaAdapter', () => {
     expect(await quote()).toEqual({ status: 'rejected', reason: 'employer-not-covered' });
   });
 
+  it('traduz a recusa por score baixo', async () => {
+    nock(BASE_URL)
+      .post(ROUTE)
+      .reply(200, { quoteId: QUOTE_ID, decision: 'declined', reasonCode: 'LOW_SCORE' });
+
+    expect(await quote()).toEqual({ status: 'rejected', reason: 'low-score' });
+  });
+
   it.each(['CREDIT_POLICY', 'constructor'])(
     'trata o motivo desconhecido %s como recusa sem motivo conhecido',
     async (reasonCode) => {

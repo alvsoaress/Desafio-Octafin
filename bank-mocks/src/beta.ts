@@ -5,6 +5,7 @@ import { z } from 'zod';
 import type { BetaScenario } from './config';
 import { waitWhileOpen } from './delay';
 import { requestLog, type LogLine } from './request-log';
+import { scoreFromCpf } from './score';
 
 export type BetaOptions = {
   scenario?: BetaScenario;
@@ -16,6 +17,7 @@ export type BetaOptions = {
 export const BETA_SLOW_DELAY_MS = 10_000;
 const BETA_DEFAULT_DELAY_MS = 150;
 const BETA_ANNUAL_RATE_PERCENT = '21.50';
+export const BETA_MIN_SCORE = 300;
 const SIMULATION_ROUTE = '/api/simulacao';
 export const BETA_PARTNER_EMPLOYERS: ReadonlySet<string> = new Set([
   '47182936000144',
@@ -79,6 +81,11 @@ export function createBetaApp({
 
     if (!BETA_PARTNER_EMPLOYERS.has(result.data.cnpjEmpregador)) {
       response.status(422).json({ codigo: randomUUID(), erro: 'empregador_sem_convenio' });
+      return;
+    }
+
+    if (scoreFromCpf(result.data.cpf) < BETA_MIN_SCORE) {
+      response.status(422).json({ codigo: randomUUID(), erro: 'score_insuficiente' });
       return;
     }
 

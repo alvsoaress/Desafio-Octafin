@@ -19,6 +19,7 @@ const alphaResponseSchema = z.discriminatedUnion('decision', [
 const alphaReasons = new Map<string, BankRejectionReason>([
   ['AMOUNT_ABOVE_LIMIT', 'amount-above-limit'],
   ['EMPLOYER_NOT_COVERED', 'employer-not-covered'],
+  ['LOW_SCORE', 'low-score'],
 ]);
 
 function readReply({ status, body }: BankReply): BankQuoteResult | null {

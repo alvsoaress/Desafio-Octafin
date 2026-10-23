@@ -25,6 +25,7 @@ const betaRefusalSchema = z.object({
 
 const betaReasons = new Map<string, BankRejectionReason>([
   ['empregador_sem_convenio', 'employer-not-covered'],
+  ['score_insuficiente', 'low-score'],
 ]);
 
 function centsToReais(cents: number): string {

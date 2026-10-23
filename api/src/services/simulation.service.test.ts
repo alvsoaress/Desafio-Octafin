@@ -85,6 +85,7 @@ describe('bankRejectionMessage', () => {
   it.each([
     ['amount-above-limit', 'O Banco Alpha não aprova esse valor. Tente um valor menor.'],
     ['employer-not-covered', 'O Banco Alpha não tem convênio com o seu empregador.'],
+    ['low-score', 'O Banco Alpha não aprovou o crédito na análise do seu CPF.'],
     ['other', 'O Banco Alpha recusou a proposta.'],
   ] as const)('dá a mensagem do motivo %s', (reason, message) => {
     expect(bankRejectionMessage('Banco Alpha', reason)).toBe(message);

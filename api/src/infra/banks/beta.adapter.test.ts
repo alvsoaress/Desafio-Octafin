@@ -97,6 +97,12 @@ describe('BetaAdapter', () => {
     expect(await quote()).toEqual({ status: 'rejected', reason: 'employer-not-covered' });
   });
 
+  it('traduz a recusa por score insuficiente', async () => {
+    nock(BASE_URL).post(ROUTE).reply(422, { codigo: CODE, erro: 'score_insuficiente' });
+
+    expect(await quote()).toEqual({ status: 'rejected', reason: 'low-score' });
+  });
+
   it('trata o código de recusa desconhecido como recusa sem motivo conhecido', async () => {
     nock(BASE_URL).post(ROUTE).reply(422, { codigo: CODE, erro: 'politica_de_credito' });
 

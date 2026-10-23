@@ -37,6 +37,7 @@ export function bankErrorMessage(bankName: string, status: BankFailureStatus): s
 const bankRejectionMessages: Record<BankRejectionReason, (bankName: string) => string> = {
   'amount-above-limit': (bankName) => `O ${bankName} não aprova esse valor. Tente um valor menor.`,
   'employer-not-covered': (bankName) => `O ${bankName} não tem convênio com o seu empregador.`,
+  'low-score': (bankName) => `O ${bankName} não aprovou o crédito na análise do seu CPF.`,
   other: (bankName) => `O ${bankName} recusou a proposta.`,
 };
 

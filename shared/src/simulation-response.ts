@@ -41,6 +41,7 @@ export const bankStatusSchema = z.enum([
 export const rejectionReasonSchema = z.enum([
   'amount-above-limit',
   'employer-not-covered',
+  'low-score',
   'other',
 ]);
 
